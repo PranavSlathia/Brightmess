@@ -25,7 +25,7 @@ plutil -insert CFBundleName -string "Brightness Relay" "$INFO"
 plutil -insert CFBundleDisplayName -string "Brightness Relay" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
 plutil -insert CFBundleShortVersionString -string 0.8.0 "$INFO"
-plutil -insert CFBundleVersion -string 8 "$INFO"
+plutil -insert CFBundleVersion -string 9 "$INFO"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$INFO"
 plutil -insert LSUIElement -bool true "$INFO"
 plutil -insert NSHighResolutionCapable -bool true "$INFO"
@@ -76,16 +76,16 @@ fi
 if launchctl bootstrap "gui/$(id -u)" "$PLIST"; then
   for attempt in {1..45}; do
     if "$HOME/.local/bin/brightness-relay" status --host 127.0.0.1 2>/dev/null |
-        plutil -extract version raw -o - - 2>/dev/null | grep -qx '0.8.0'; then
-      print "0.8 receiver verified."
+        plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx '9'; then
+      print "Light desk receiver build 9 verified."
       break
     fi
     sleep 2
   done
 fi
 if ! "$HOME/.local/bin/brightness-relay" status --host 127.0.0.1 2>/dev/null |
-     plutil -extract version raw -o - - 2>/dev/null | grep -qx '0.8.0'; then
+     plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx '9'; then
   if [[ -f "$BACKUP/receiver.plist" && -d "$BACKUP/Brightness Relay.app" ]]; then zsh "$BACKUP/Rollback Mini.command"; fi
   print -u2 "0.8 receiver did not start; see $BACKUP"; exit 1
 fi
-echo "Brightness Relay 0.8.0 installed. Previous app and launch settings: $BACKUP"
+echo "Brightness Relay 0.8.0 (Light desk, build 9) installed. Previous app and launch settings: $BACKUP"

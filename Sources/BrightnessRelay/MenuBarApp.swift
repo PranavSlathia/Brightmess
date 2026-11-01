@@ -51,7 +51,14 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
             keyController?.requestAccessibility()
         }
         server.setUIStatusProvider { [weak self] in
-            MainActor.assumeIsolated { self?.model.diagnostics ?? [:] }
+            MainActor.assumeIsolated {
+                guard let self else { return [:] }
+                var result = self.model.diagnostics
+                result["panel"] = "Light desk"
+                result["panelVisible"] = self.popover.isShown
+                result["uiBuild"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? NSNull()
+                return result
+            }
         }
 
         server.setOnApplied { [weak self] status in
@@ -96,7 +103,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.model.receiverFailed(error)
-                self.setStatusIcon(symbol: "exclamationmark.triangle.fill")
+                self.setStatusIcon(.attention)
             }
         }
         server.displayCoordinator.setOnChanged { [weak self] states in
@@ -133,7 +140,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
                 if let error {
                     RelayLog.write("Menu receiver failed: \(error)")
                     self.model.receiverFailed(error)
-                    self.setStatusIcon(symbol: "exclamationmark.triangle.fill")
+                    self.setStatusIcon(.attention)
                 } else {
                     RelayLog.write("Menu receiver listening on port 47777")
                     self.model.receiverReady()
@@ -143,21 +150,23 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     private func installStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.autosaveName = "dev.pranav.BrightnessRelay"
         statusItem.isVisible = true
         guard let button = statusItem.button else { return }
-        setStatusIcon(symbol: "sun.max.fill")
-        button.toolTip = "Brightness Relay — control displays"
+        setStatusIcon(.linked)
+        button.toolTip = "Brightness Relay: open light desk"
+        button.setAccessibilityLabel("Brightness Relay: open light desk")
         button.target = self
         button.action = #selector(togglePopover)
 
         popover.delegate = self
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 370, height: 500)
+        let panelHeight = DeskLayout.height(for: NSScreen.main?.visibleFrame.height)
+        popover.contentSize = NSSize(width: DeskLayout.width, height: panelHeight)
         popover.contentViewController = NSHostingController(
-            rootView: BrightnessPopoverView(model: model)
+            rootView: BrightnessPopoverView(model: model, height: panelHeight)
         )
         RelayLog.write("Menu bar status item installed")
     }
@@ -234,19 +243,12 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     private func show(_ status: AppliedBrightnessStatus) {
-        model.show(status)
-        setStatusIcon(
-            symbol: status.source == "solar-fallback" ? "sun.haze.fill" : "sun.max.fill"
-        )
+        setStatusIcon(status.source == "solar-fallback" ? .solar : .linked)
     }
 
-    private func setStatusIcon(symbol: String) {
-        let image = NSImage(
-            systemSymbolName: symbol,
-            accessibilityDescription: "Brightness Relay"
-        )
-        image?.isTemplate = true
-        statusItem?.button?.image = image
+    private func setStatusIcon(_ mode: DeskMark.Mode) {
+        let image = DeskMark.image(mode)
+        if statusItem?.button?.image !== image { statusItem?.button?.image = image }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -266,7 +268,7 @@ final class BrightnessMenuModel: ObservableObject {
     @Published private(set) var displays: [ManagedDisplayState]
     @Published private(set) var receiverStatus = "Starting receiver…"
     @Published private(set) var sourceTitle = "Waiting for MacBook Air"
-    @Published private(set) var sourceDetail = "Solar fallback is ready"
+    @Published private(set) var sourceDetail = "Waiting for Air"
     @Published private(set) var isSyncing = false
     @Published private(set) var keyboardStatus: BrightnessKeyStatus = .starting
     @Published private(set) var colorStates: [String: DisplayColorState] = [:]
@@ -283,6 +285,26 @@ final class BrightnessMenuModel: ObservableObject {
     private var presence = SourcePresence()
     private var solarActive = false
     @Published var resetID: String?
+    @Published var detailedDisplay: String?
+    private var panelVisible = false
+    @Published var toolsOpen = false { didSet { updateAgeTimer() } }
+    @Published private(set) var syncNotice: String?
+    private var syncID: UUID?
+    @Published private(set) var justSynced = false
+    var deskStatus: String {
+        if receiverStatus.hasPrefix("Receiver failed") { return "Receiver unavailable" }
+        if isSyncing { return "Syncing" }
+        return sourceDetail
+    }
+    var canReconnect: Bool {
+        connectionControlAvailable && displays.contains { $0.connectionState == .disconnected }
+    }
+    func toggleDetails(_ id: String) {
+        detailedDisplay = detailedDisplay == id ? nil : id; resetID = nil
+    }
+    func step(_ direction: BrightnessStepDirection, id: String) {
+        coordinator.adjustManualBrightness(direction: direction, fine: false, displayID: id)
+    }
     private var editingSliders = Set<String>()
     @Published private(set) var desiredSlider: [String: UInt16] = [:]
     private var lastAmbient: AmbientSample?
@@ -298,29 +320,46 @@ final class BrightnessMenuModel: ObservableObject {
     }
 
     func setVisible(_ visible: Bool) {
-        timer?.invalidate(); timer = nil; resetID = nil
+        panelVisible = visible; resetID = nil
         if !visible {
+            detailedDisplay = nil; toolsOpen = false
             for id in editingSliders {
                 pendingSliderWrites.removeValue(forKey: id)?.cancel()
                 desiredSlider.removeValue(forKey: id); coordinator.cancelSlider(id)
             }
             editingSliders.removeAll()
         }
-        if visible {
-            refreshSourceAge()
-            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refreshSourceAge() }
-            }
-            RunLoop.main.add(timer, forMode: .common); self.timer = timer
+        if visible { refreshSourceAge() }
+        updateAgeTimer()
+    }
+
+    private func updateAgeTimer() {
+        timer?.invalidate(); timer = nil
+        guard panelVisible && toolsOpen else { return }
+        refreshSourceAge()
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshSourceAge() }
         }
+        t.tolerance = 0.15
+        RunLoop.main.add(t, forMode: .common); timer = t
     }
     func setPresence(_ value: SourcePresence, solar: Bool) {
+        let answered = isSyncing && value.state == .awake && value.measurement != presence.measurement
+        let lost = isSyncing && value.lostAt != nil && value.lostAt != presence.lostAt
         presence = value; solarActive = solar
         colorController.maximumSampleAge = value.mode == .live ? 90 : 2700
         receiverStatus = "Receiver ready · " + (value.mode.map { $0.rawValue.capitalized + " mode" } ?? "Waiting")
         sourceTitle = value.raw.map { "MacBook Air · " + String(Int(($0 * 100).rounded())) + "%" } ?? "Waiting for Air brightness"
         sourceDetail = value.label(now: Date().timeIntervalSince1970, solar: solar)
-        isSyncing = false
+        if answered || lost {
+            let id = syncID
+            isSyncing = false; justSynced = answered
+            syncNotice = lost ? "Air unavailable. Keeping the last settings." : nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self, self.syncID == id else { return }
+                self.justSynced = false; self.syncID = nil
+            }
+        } else if value.state == .awake && !isSyncing { syncNotice = nil }
         if timer != nil { refreshSourceAge() }
     }
 
@@ -333,21 +372,24 @@ final class BrightnessMenuModel: ObservableObject {
         isSyncing = false
     }
 
-    func show(_ status: AppliedBrightnessStatus) { isSyncing = false }
+
 
     func updateDisplays(_ updated: [ManagedDisplayState]) {
         displays = updated
+        if let detailedDisplay, !updated.contains(where: { $0.id == detailedDisplay }) { self.detailedDisplay = nil; resetID = nil }
         colorController.updateDisplays(updated)
     }
 
     func requestAirSync() {
-        isSyncing = true
+        guard !isSyncing else { return }
+        let request = UUID(); syncID = request; syncNotice = nil
+        isSyncing = true; justSynced = false
         sourceDetail = "Requesting a fresh Air reading…"
         server.requestRefresh()
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-            guard let self, self.isSyncing else { return }
+            guard let self, self.isSyncing, self.syncID == request else { return }
             self.isSyncing = false
-            self.sourceDetail = "No reply yet · last settings retained"
+            self.syncID = nil; self.syncNotice = "Air hasn’t replied. Keeping the last settings."
         }
     }
 
@@ -535,286 +577,7 @@ private final class DisplayShadeController {
     }
 }
 
-private struct BrightnessPopoverView: View {
-    @ObservedObject var model: BrightnessMenuModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-            Divider()
-
-            if model.displays.isEmpty {
-                ContentUnavailableView(
-                    "No External Displays",
-                    systemImage: "display.trianglebadge.exclamationmark",
-                    description: Text("Connect a display, then refresh.")
-                )
-                .frame(height: 170)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(model.displays) { display in
-                            DisplayControlCard(model: model, state: display)
-                        }
-                    }
-                }
-                .frame(maxHeight: 520)
-            }
-
-            Divider()
-            footer
-        }
-        .padding(14)
-        .frame(width: 370)
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
-                Image(systemName: "sun.max.fill")
-                    .font(.title3)
-                    .foregroundStyle(.yellow)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Brightness Relay")
-                        .font(.headline)
-                    Text(model.receiverStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button(action: model.requestAirSync) {
-                    Image(systemName: model.isSyncing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .help("Sync from MacBook Air now")
-                .disabled(model.isSyncing)
-            }
-            HStack {
-                Text(model.sourceTitle)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text(model.sourceDetail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Text(model.sourceAge)
-                .font(.caption2).foregroundStyle(.secondary)
-            Text(model.ambientDetail)
-                .font(.caption2).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Image(systemName: "keyboard")
-                Text(model.keyboardStatus.title)
-                Spacer()
-                if model.keyboardStatus.needsPermission {
-                    Button("Enable", action: model.requestKeyboardAccess)
-                }
-            }
-            .font(.caption2)
-            .help("Brightness keys adjust connected screens. Option+Shift uses 1% steps. Disable competing key handlers in Lunar or MonitorControl.")
-            HStack(spacing: 13) {
-            Button("Reconnect All", systemImage: "display.2") {
-                model.wakeAll()
-            }
-            .help("Reconnect screens removed from the macOS display layout")
-
-            Button("Re-detect", systemImage: "arrow.triangle.2.circlepath") {
-                model.redetectHardware()
-            }
-            .help("Retry DDC and refresh monitor readings")
-
-            Spacer()
-
-            Button(action: model.openLog) {
-                Image(systemName: "doc.text.magnifyingglass")
-            }
-            .help("Open receiver log")
-        }
-        .buttonStyle(.borderless)
-        .font(.caption)
-        }
-    }
-}
-
-private struct DisplayControlCard: View {
-    @ObservedObject var model: BrightnessMenuModel
-    let state: ManagedDisplayState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 7) {
-                Image(systemName: state.display.isMain ? "display" : "tv")
-                    .foregroundStyle(state.connectionState.isConnected ? Color.primary : Color.secondary)
-                Text(state.display.name)
-                    .font(.subheadline.weight(.semibold))
-                if state.display.isMain && state.connectionState.isConnected {
-                    Text("MAIN")
-                        .font(.system(size: 8, weight: .bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(.quaternary, in: Capsule())
-                }
-                Spacer()
-                Text(readingLabel)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(readingColor)
-            }
-
-            HStack(spacing: 9) {
-                Image(systemName: "sun.min")
-                    .foregroundStyle(.secondary)
-                Slider(
-                    value: Binding(
-                        get: { Double(model.desiredSlider[state.id] ?? state.brightness ?? 50) },
-                        set: { model.sliderChanged(displayID: state.id, value: $0) }
-                    ),
-                    in: 0 ... 100,
-                    onEditingChanged: { editing in
-                        if editing { model.sliderBegan(state.id) } else { model.sliderEnded(displayID: state.id) }
-                    }
-                )
-                .accessibilityLabel("Brightness for " + state.display.name)
-                .disabled(!state.connectionState.isConnected)
-                Text("\(model.desiredSlider[state.id] ?? state.brightness ?? 0)%")
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 34, alignment: .trailing)
-            }
-
-            HStack(spacing: 10) {
-                Toggle(
-                    "Follow automatic",
-                    isOn: Binding(
-                        get: { state.followsAutomatic },
-                        set: { model.setFollowsAutomatic($0, displayID: state.id) }
-                    )
-                )
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .font(.caption)
-                .disabled(!state.connectionState.isConnected)
-
-                Spacer()
-
-                Button {
-                    model.toggleConnection(displayID: state.id)
-                } label: {
-                    Label(
-                        connectionLabel,
-                        systemImage: state.connectionState.isConnected ? "display.trianglebadge.exclamationmark" : "display"
-                    )
-                }
-                .buttonStyle(.borderless)
-                .font(.caption.weight(.medium))
-                .disabled(!model.connectionControlAvailable || state.connectionState.isTransitioning ||
-                          (state.connectionState.isConnected &&
-                           model.displays.filter { $0.connectionState.isConnected }.count < 2))
-                .help("Remove this screen from the macOS layout, then reconnect it here. At least one screen must stay connected.")
-            }
-
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(methodColor)
-                    .frame(width: 6, height: 6)
-                Text(methodLabel)
-                if let error = state.lastError {
-                    Text("· \(error)")
-                        .lineLimit(1)
-                }
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    if let target = state.mappedTarget { Text("Mapped target \(target)%") }
-                    Spacer()
-                    Text(state.calibration.summary)
-                }
-                if let note = state.learningNote { Text(note) }
-                HStack {
-                    if state.calibration.canUndo { Button("Undo last match") { model.editCurve(id: state.id, reset: false) } }
-                    if state.calibration.isCalibrated {
-                        if model.resetID == state.id {
-                            Button("Confirm reset") { model.editCurve(id: state.id, reset: true) }
-                            Button("Cancel") { model.resetID = nil }
-                        } else { Button("Reset calibration") { model.resetID = state.id } }
-                    }
-                }
-                if state.controlMethod == .hardwareDDC {
-                    HStack {
-                        Text("Extra dim at minimum")
-                        Slider(value: Binding(get: { Double(state.extraDim) },
-                            set: { model.setExtraDim($0, id: state.id) }), in: 0...60, step: 1)
-                            .accessibilityLabel("Extra dim at minimum for " + state.display.name)
-                        Text(state.extraDim == 0 ? "Off" : "\(state.extraDim)%")
-                    }
-                    .disabled(!state.connectionState.isConnected)
-                }
-            }
-            .buttonStyle(.borderless).font(.caption2)
-            Divider()
-            DisplayColorControls(model: model, displayID: state.id,
-                                 connected: state.connectionState.isConnected)
-        }
-        .padding(11)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 0.5)
-        }
-    }
-
-    private var readingLabel: String {
-        guard state.connectionState.isConnected else { return connectionLabel }
-        guard let brightness = state.brightness else { return "Unavailable" }
-        switch state.brightnessOrigin {
-        case .liveHardware: return "\(brightness)% · Live"
-        case .lastSet: return "\(brightness)% · Last set"
-        case .liveSoftware: return "\(brightness)% · Software live"
-        case .unavailable: return "Unavailable"
-        }
-    }
-
-    private var connectionLabel: String {
-        switch state.connectionState {
-        case .connected: return "Disconnect"
-        case .disconnected: return "Reconnect"
-        case .disconnecting: return "Disconnecting…"
-        case .reconnecting: return "Reconnecting…"
-        }
-    }
-
-    private var readingColor: Color {
-        switch state.brightnessOrigin {
-        case .liveHardware, .liveSoftware: return .green
-        case .lastSet, .unavailable: return .secondary
-        }
-    }
-
-    private var methodLabel: String {
-        switch state.controlMethod {
-        case .detecting: return "Detecting control path"
-        case .hardwareDDC: return "Hardware DDC"
-        case .softwareDimming: return "Software dimming"
-        }
-    }
-
-    private var methodColor: Color {
-        switch state.controlMethod {
-        case .detecting: return .orange
-        case .hardwareDDC: return .blue
-        case .softwareDimming: return .purple
-        }
-    }
-}
-
-private struct DisplayColorControls: View {
+struct DisplayColorControls: View {
     @ObservedObject var model: BrightnessMenuModel
     let displayID: String
     let connected: Bool
@@ -827,6 +590,8 @@ private struct DisplayColorControls: View {
                 Spacer()
                 Button("Reset") { model.resetColor(id: displayID) }
                     .buttonStyle(.borderless).font(.caption2)
+                    .disabled(!connected || (state.settings.mode == .off && state.settings.strength == 0.65 &&
+                        state.settings.trim == 0 && state.settings.manualKelvin == 6500 && state.error == nil))
             }
             Picker("White balance", selection: Binding(
                 get: { state.settings.mode },

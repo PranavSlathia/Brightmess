@@ -61,6 +61,12 @@ struct BrightnessRelayCLI {
     @MainActor
     static func main() {
         let arguments = CLIArguments(values: CommandLine.arguments)
+        #if DEBUG
+        if arguments.command == "panel-preview" {
+            do { try DeskPreview.render(arguments) } catch { fail(error) }
+            return
+        }
+        #endif
         if arguments.command == "menu" {
             do {
                 try menu(arguments)

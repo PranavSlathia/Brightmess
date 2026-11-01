@@ -62,12 +62,23 @@ protocol DisplayDriver {
 }
 extension ExternalDDCController: DisplayDriver {}
 
+protocol DisplayConnections {
+    var ledger: DisplayRecoveryLedger { get }
+    var isAvailable: Bool { get }
+    func isOnline(_ display: ExternalDisplay) -> Bool
+    func disconnectedDisplays() -> [ExternalDisplay]
+    func disconnect(_ display: ExternalDisplay) throws
+    func reconnect(_ display: ExternalDisplay) throws -> UInt32
+    func recoverAll() throws -> [DisplayRecoveryOutcome]
+}
+extension DisplayConnectionController: DisplayConnections {}
+
 final class DisplayCoordinator: @unchecked Sendable {
     typealias StateHandler = @Sendable ([ManagedDisplayState]) -> Void
     typealias ShadeHandler = @Sendable (DisplayShadeRequest) -> Void
 
     private let hardware: any DisplayDriver
-    private let connection: DisplayConnectionController
+    private let connection: any DisplayConnections
     private let queue = DispatchQueue(label: "dev.pranav.brightness-relay.displays")
     private let defaults: UserDefaults
     private var states: [ManagedDisplayState] = []
@@ -94,7 +105,7 @@ final class DisplayCoordinator: @unchecked Sendable {
 
     init(
         hardware: any DisplayDriver,
-        connection: DisplayConnectionController = DisplayConnectionController(),
+        connection: any DisplayConnections = DisplayConnectionController(),
         defaults: UserDefaults = .standard
     ) {
         self.hardware = hardware
@@ -272,10 +283,11 @@ final class DisplayCoordinator: @unchecked Sendable {
         }
     }
 
-    func adjustManualBrightness(direction: BrightnessStepDirection, fine: Bool) {
+    func adjustManualBrightness(direction: BrightnessStepDirection, fine: Bool, displayID: String? = nil) {
         queue.async { [self] in
             for i in self.states.indices where self.states[i].connectionState.isConnected {
                 let id = self.states[i].id
+                if let displayID, displayID != id { continue }
                 // A user's just-released slider may be waiting for the DDC
                 // rate limit. Step from that intent, not the previous backlight.
                 let manualGoal = self.ramps[id].flatMap { $0.duration == 0 ? $0.goal : nil }
@@ -372,6 +384,7 @@ final class DisplayCoordinator: @unchecked Sendable {
     func redetectHardware() {
         queue.async { [weak self] in
             guard let self else { return }
+            self.states = self.enumerateDisplays(preserving: self.states)
             for index in self.states.indices
                 where self.states[index].connectionState.isConnected
             {
@@ -385,7 +398,9 @@ final class DisplayCoordinator: @unchecked Sendable {
                 if self.now - (self.lastHardware[self.states[index].id] ?? -.infinity) >= 1 {
                     self.readBrightness(at: index)
                 }
-                if self.states[index].controlMethod == .detecting, let brightness = self.states[index].brightness {
+                if self.states[index].controlMethod == .detecting,
+                   let brightness = self.states[index].brightness ?? (self.states[index].followsAutomatic
+                       ? self.latestAutomaticTarget.map { self.calibratedTarget(at: index, fallback: $0) } : nil) {
                     _ = self.drive(brightness, at: index, fade: false)
                 }
             }

@@ -1,6 +1,7 @@
 import BrightnessCore
 import CPrivateDisplay
 import Foundation
+import CoreGraphics
 
 public enum BrightnessHardwareError: Error, CustomStringConvertible {
     case builtInDisplayUnavailable(Int32)
@@ -41,6 +42,15 @@ public struct BuiltInBrightnessSource: Sendable {
     }
 }
 
+public enum DeskDisplayShape: String, Codable, Sendable {
+    case portraitMonitor, monitor, television
+    public static func identify(name: String, portrait: Bool) -> Self {
+        let words = name.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted)
+        if words.contains("tv") || words.contains("television") { return .television }
+        return portrait ? .portraitMonitor : .monitor
+    }
+}
+
 public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
     public let id: String
     public let displayID: UInt32
@@ -52,6 +62,9 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
     public let ioLocation: String
     public let isMain: Bool
     public let supportsStandby: Bool
+    // Optional so recovery records created by earlier releases still decode.
+    public let deskShape: DeskDisplayShape?
+    public var shape: DeskDisplayShape { deskShape ?? .identify(name: name, portrait: false) }
 
     public init(
         id: String,
@@ -63,7 +76,7 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
         edidUUID: String,
         ioLocation: String,
         isMain: Bool,
-        supportsStandby: Bool
+        supportsStandby: Bool, deskShape: DeskDisplayShape? = nil
     ) {
         self.id = id
         self.displayID = displayID
@@ -75,6 +88,7 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
         self.ioLocation = ioLocation
         self.isMain = isMain
         self.supportsStandby = supportsStandby
+        self.deskShape = deskShape
     }
 }
 
@@ -118,7 +132,9 @@ public final class ExternalDDCController: @unchecked Sendable {
                 edidUUID: Self.string(from: raw.edidUUID),
                 ioLocation: Self.string(from: raw.ioLocation),
                 isMain: raw.isMain != 0,
-                supportsStandby: raw.supportsStandby != 0
+                supportsStandby: raw.supportsStandby != 0,
+                deskShape: .identify(name: Self.string(from: raw.name),
+                    portrait: CGDisplayBounds(raw.displayID).height > CGDisplayBounds(raw.displayID).width)
             )
         }
     }

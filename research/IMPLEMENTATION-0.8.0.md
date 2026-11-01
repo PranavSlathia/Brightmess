@@ -49,3 +49,29 @@ A clean relaunch of the unchanged Mini app rejoined the same Air session. At tha
 - The user changed brightness on the Air without **Sync Now** and reported that the displays responded almost immediately. The Mini logged DDC writes of 20% and later 100% to the Samsung, with intermediate levels as it ramped up. At the final reading the Air reported 100%, both displays were still automatic, and both mapped targets were 100%.
 - The Samsung value is the **last DDC command**, not hardware readback. The TV's 100% was the **applied software level**. The receiver counted 12 hardware and 62 software writes since restart; those are local display adjustments, not network packet counts.
 - Not measured in this desk test: precise key-to-screen latency, separate panel luminance, ten-minute Air CPU/battery use, or the live pair's behaviour across controlled lighting changes, sleep/wake and physical tailnet loss. The CPU comparison above is for the Mini receiver with the scheduled Air helper.
+
+### Mini interface build 9: Light desk
+
+The paired-screen menu-bar mark and illustrated native popover replace the sun
+icon and number-heavy default view. The upper controls are per-display brightness,
+Follow Air and logical disconnect/reconnect. Exact output, mapping, colour and
+calibration remain available under Details; source diagnostics are in Desk
+details. The Air helper, wire protocol, existing display preferences and pairing
+are unchanged.
+
+- The real installed popover exposed the Light desk heading, portrait Samsung,
+  Beyond TV, both enabled Follow Air switches and per-display controls. The Mini
+  returned to the same live Air session after installation.
+- In an isolated native QA window rendering the production SwiftUI, the TV's
+  + button moved its software level from 48 to 54 while Samsung remained at 68;
+  minus restored 48. Follow Air switched off/on. Disconnecting the TV disabled
+  the last-screen disconnect action. Both the TV reconnect and group reconnect
+  restored it. The artwork and disclosure controls opened display details.
+- The loopback simulation verified sync acknowledgement on a fresh Air reading;
+  the isolated no-sender window showed timeout feedback and re-enabled Sync now.
+  Light, dark, empty and disconnected fixtures were rendered. The release build
+  and 21 core checks passed. The [README preview](../docs/light-desk.png) is an
+  isolated fixture, not a capture of private desktop content.
+- The previous app and LaunchAgent were backed up by the Mini installer. The
+  new locally signed build may require refreshing its Accessibility approval;
+  live Air sync and panel controls are independent of that permission.

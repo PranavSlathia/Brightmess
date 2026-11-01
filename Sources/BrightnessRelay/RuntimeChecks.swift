@@ -132,6 +132,10 @@ enum RuntimeChecks {
         try await Task.sleep(nanoseconds: 1_200_000_000)
         let restored = try RelayHTTPServer(port: port, authenticator: auth, displayCoordinator: coordinator,
             curve: try BrightnessCurve(minimum: 0, maximum: 100), loopbackOnly: true)
+        let panel = BrightnessMenuModel(server: restored)
+        restored.setOnPresence { [weak panel] value, solar in
+            DispatchQueue.main.async { panel?.setPresence(value, solar: solar) }
+        }
         try await restored.start()
         defer { restored.stopSimulationListener() }
         try await wait({coordinator.snapshot().first{$0.id=="TV"}?.brightness == 90}, "reconnect lost latest sample", timeout: 8)
@@ -148,6 +152,27 @@ enum RuntimeChecks {
         coordinator.setFollowsAutomatic(false, displayID: "TV")
         coordinator.setManualBrightness(23, displayID: "TV", final: true)
         try expect(coordinator.snapshot().first{$0.id=="TV"}?.followsAutomatic == false, "explicit manual changed to Auto")
+        // Use the popover's real action routes; per-panel buttons must never
+        // inherit the Magic Keyboard's group targeting.
+        panel.requestAirSync()
+        try await wait({panel.justSynced && !panel.isSyncing}, "Sync now did not acknowledge the fresh Air reading")
+        let samsungBefore = coordinator.snapshot().first { $0.id == "Samsung" }!.brightness!
+        panel.step(.up, id: "TV")
+        try await wait({coordinator.snapshot().first { $0.id == "TV" }?.brightness == 29}, "TV plus button")
+        try expect(coordinator.snapshot().first { $0.id == "Samsung" }?.brightness == samsungBefore, "TV button moved Samsung")
+        panel.step(.down, id: "TV")
+        try await wait({coordinator.snapshot().first { $0.id == "TV" }?.brightness == 23}, "TV minus button")
+        panel.setFollowsAutomatic(true, displayID: "TV")
+        try await wait({coordinator.snapshot().first { $0.id == "TV" }?.brightness == 70}, "Follow Air button")
+        panel.toggleDetails("TV")
+        try expect(panel.detailedDisplay == "TV", "Details did not expand")
+        panel.toggleDetails("TV")
+        try expect(panel.detailedDisplay == nil, "Details did not collapse")
+        try expect(DeskDisplayShape.identify(name: "Beyond TV", portrait: false) == .television &&
+                   DeskDisplayShape.identify(name: "LU28R55", portrait: true) == .portraitMonitor &&
+                   DeskDisplayShape.identify(name: "Secondary LCD", portrait: false) == .monitor,
+                   "secondary monitor mislabeled as television")
+        print("Panel checks passed: per-display +/−, Follow Air, disclosure, device classification.")
         print("Loopback checks passed: scheduled/live, burst, watchdog, learn/undo, bounded fade, idle, sleep/lid, Sync Now, ordering, transport loss/recovery, unstable gesture, explicit manual.")
     }
 }

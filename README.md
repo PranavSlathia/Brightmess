@@ -48,17 +48,21 @@ does not promise electrical power-off.
 
 ## Menu-bar controls
 
-Click the sun icon to open the controller:
+Click the paired-screen menu-bar icon to open **Light desk** (Mini interface build 9). The portrait Samsung and wide TV each have an illustration whose picture tracks that screen’s applied brightness level. Click the artwork or **Details** for exact readings and advanced controls. The Air helper does not need an update for this interface change.
 
-- one independent brightness slider per connected display;
-- **Follow automatic** per display; dragging a slider changes only that display
+![Light desk with isolated example displays](docs/light-desk.png)
+
+The panel provides:
+
+- an independent brightness slider and **− / +** buttons for each connected display; unlike keyboard keys, these buttons adjust only that screen;
+- **Follow Air** per display; dragging a slider changes only that display
   without disabling automatic following; an explicit off switch stays manual;
 - **Disconnect / Reconnect** per display;
-- **Reconnect All** recovery action;
-- **Off / Adaptive / Manual white balance**, strength and trim per screen;
+- **Reconnect all** when there is a disconnected screen; the last connected screen cannot be disconnected;
+- **Off / Adaptive / Manual white balance**, strength, trim and calibration under each screen’s **Details**;
 - automatic per-screen learning, Undo last match and confirmed Reset calibration;
 - Magic Keyboard brightness keys (Accessibility permission required);
-- **Re-detect** to retry DDC and refresh monitor readings;
+- **Desk details** for source readings, keyboard status, re-detection, and the receiver log;
 - source status for MacBook Air or solar fallback;
 - on-demand Air sync and receiver-log access.
 
