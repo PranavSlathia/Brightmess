@@ -24,7 +24,7 @@ enum BrightnessMenuBarApplication {
 }
 
 @MainActor
-final class MenuBarController: NSObject, NSApplicationDelegate {
+final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let server: RelayHTTPServer
     private let model: BrightnessMenuModel
     private let keyController: BrightnessKeyController
@@ -58,6 +58,9 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self?.show(status)
             }
+        }
+        server.setOnPresence { [weak self] presence, solar in
+            DispatchQueue.main.async { self?.model.setPresence(presence, solar: solar) }
         }
         server.setOnAmbient { [weak self] sample, source, date in
             DispatchQueue.main.async {
@@ -149,6 +152,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
         button.target = self
         button.action = #selector(togglePopover)
 
+        popover.delegate = self
         popover.behavior = .transient
         popover.animates = true
         popover.contentSize = NSSize(width: 370, height: 500)
@@ -210,6 +214,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
 
     @objc private func willSleep() { model.restoreColors() }
     @objc private func didWake() {
+        model.resumeColors()
         keyController.start()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             self?.model.colorConfigurationChanged()
@@ -218,9 +223,11 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
         }
     }
 
+    func popoverDidClose(_ notification: Notification) { model.setVisible(false) }
     private func openPopover() {
         guard let button = statusItem.button else { return }
         model.refreshDisplays()
+        model.setVisible(true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
         RelayLog.write("Brightness controller popover opened")
@@ -273,8 +280,12 @@ final class BrightnessMenuModel: ObservableObject {
     private let colorController = DisplayColorController()
     private var onKeyboardAccess: (() -> Void)?
     private var timer: Timer?
+    private var presence = SourcePresence()
+    private var solarActive = false
+    @Published var resetID: String?
+    private var editingSliders = Set<String>()
+    @Published private(set) var desiredSlider: [String: UInt16] = [:]
     private var lastAmbient: AmbientSample?
-    private var lastAirAt: Date?
     private var lastColourPacketAt: Date?
 
     init(server: RelayHTTPServer) {
@@ -284,18 +295,37 @@ final class BrightnessMenuModel: ObservableObject {
         self.connectionControlAvailable = server.displayCoordinator.connectionControlAvailable
         colorController.onChanged = { [weak self] states in self?.colorStates = states }
         colorController.updateDisplays(displays)
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.colorController.tick()
-                self?.refreshSourceAge()
+    }
+
+    func setVisible(_ visible: Bool) {
+        timer?.invalidate(); timer = nil; resetID = nil
+        if !visible {
+            for id in editingSliders {
+                pendingSliderWrites.removeValue(forKey: id)?.cancel()
+                desiredSlider.removeValue(forKey: id); coordinator.cancelSlider(id)
             }
+            editingSliders.removeAll()
         }
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        if visible {
+            refreshSourceAge()
+            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshSourceAge() }
+            }
+            RunLoop.main.add(timer, forMode: .common); self.timer = timer
+        }
+    }
+    func setPresence(_ value: SourcePresence, solar: Bool) {
+        presence = value; solarActive = solar
+        colorController.maximumSampleAge = value.mode == .live ? 90 : 2700
+        receiverStatus = "Receiver ready · " + (value.mode.map { $0.rawValue.capitalized + " mode" } ?? "Waiting")
+        sourceTitle = value.raw.map { "MacBook Air · " + String(Int(($0 * 100).rounded())) + "%" } ?? "Waiting for Air brightness"
+        sourceDetail = value.label(now: Date().timeIntervalSince1970, solar: solar)
+        isSyncing = false
+        if timer != nil { refreshSourceAge() }
     }
 
     func receiverReady() {
-        receiverStatus = "Receiver ready · Air every 30 min"
+        receiverStatus = "Receiver ready"
     }
 
     func receiverFailed(_ error: Error) {
@@ -303,22 +333,7 @@ final class BrightnessMenuModel: ObservableObject {
         isSyncing = false
     }
 
-    func show(_ status: AppliedBrightnessStatus) {
-        let sourcePercent = Int((status.sourceBrightness * 100).rounded())
-        isSyncing = false
-        if status.source == "solar-fallback" {
-            sourceTitle = "Solar · \(sourcePercent)%"
-            sourceDetail = status.changedDisplays > 0
-                ? "No recent Air reading · solar adjusted"
-                : "No recent Air reading · solar matched"
-        } else {
-            lastAirAt = Date()
-            sourceTitle = "MacBook Air · \(sourcePercent)%"
-            sourceDetail = status.changedDisplays > 0
-                ? "Synced just now"
-                : "Live source · no display change needed"
-        }
-    }
+    func show(_ status: AppliedBrightnessStatus) { isSyncing = false }
 
     func updateDisplays(_ updated: [ManagedDisplayState]) {
         displays = updated
@@ -337,7 +352,7 @@ final class BrightnessMenuModel: ObservableObject {
     }
 
     func refreshDisplays() {
-        coordinator.refresh()
+        coordinator.refresh(readHardware: false)
     }
 
     func redetectHardware() {
@@ -366,35 +381,39 @@ final class BrightnessMenuModel: ObservableObject {
     func resetColor(id: String) { colorController.reset(id: id) }
     func restoreColors() { colorController.restoreAll() }
     func colorConfigurationChanged() { colorController.configurationChanged() }
-    func learnBrightness(id: String, reset: Bool = false) {
-        coordinator.learnCalibration(displayID: id, reset: reset)
-    }
+    func resumeColors() { colorController.resume() }
+    func editCurve(id: String, reset: Bool) { coordinator.editCurve(displayID: id, reset: reset); resetID = nil }
+    func setExtraDim(_ amount: Double, id: String) { coordinator.setExtraDim(UInt16(amount.rounded()), displayID: id) }
     func updateAmbient(_ sample: AmbientSample?, source: String, receivedAt: Date) {
         lastAmbient = sample
         lastColourPacketAt = receivedAt
         colorController.accept(sample)
-        refreshSourceAge()
+        if timer != nil { refreshSourceAge() }
+    }
+    private var measurementAgeText: String {
+        guard let time = presence.measurement else { return "No Air reading yet" }
+        let age = Int(max(0, Date().timeIntervalSince1970 - time))
+        return age < 60 ? "Air reading \(age)s ago" : "Air reading \(age / 60) min ago"
+    }
+    private var ambientText: String {
+        guard let sample = lastAmbient else {
+            return presence.mode == .live ? "No recent Air colour reading" : (lastColourPacketAt == nil ? "Waiting for Air colour helper" : "Update Air helper for colour sensing")
+        }
+        if let reason = sample.unavailableReason(maximumAge: colorController.maximumSampleAge) { return reason }
+        if let lux = sample.lux, let kelvin = sample.kelvin {
+            return String(format: "Room %.0f K · %.0f lux", kelvin, lux)
+        }
+        return "Air colour unavailable"
     }
     private func refreshSourceAge() {
-        if let lastAirAt {
-            let age = Int(Date().timeIntervalSince(lastAirAt))
-            sourceAge = age < 60 ? "Air reading just now" : "Air reading \(age / 60) min ago"
-        }
-        guard let sample = lastAmbient else {
-            ambientDetail = lastColourPacketAt == nil ? "Waiting for Air colour helper" : "Update Air helper for colour sensing"
-            return
-        }
-        if let reason = sample.unavailableReason() {
-            ambientDetail = reason
-        } else if let lux = sample.lux, let kelvin = sample.kelvin {
-            ambientDetail = String(format: "Room %.0f K · %.0f lux · sampled with Air sync", kelvin, lux)
-        }
+        sourceAge = measurementAgeText; ambientDetail = ambientText
+        sourceDetail = presence.label(now: Date().timeIntervalSince1970, solar: solarActive)
     }
 
     var diagnostics: [String: Any] {
         ["keyboard": keyboardStatus.title,
-         "sourceAge": sourceAge,
-         "ambient": ambientDetail,
+         "sourceAge": measurementAgeText,
+         "ambient": ambientText,
          "colors": colorStates.mapValues { state -> [String: Any] in
              ["mode": state.settings.mode.rawValue, "detail": state.detail,
               "targetKelvin": state.targetKelvin as Any? ?? NSNull(),
@@ -402,12 +421,18 @@ final class BrightnessMenuModel: ObservableObject {
          }]
     }
 
+    func sliderBegan(_ id: String) { editingSliders.insert(id); coordinator.beginSlider(id) }
     func sliderChanged(displayID: String, value: Double) {
         let target = UInt16(min(max(value.rounded(), 0), 100))
-        updateLocalSlider(displayID: displayID, target: target)
-        pendingSliderWrites[displayID]?.cancel()
+        desiredSlider[displayID] = target
+        guard pendingSliderWrites[displayID] == nil else { return }
+        coordinator.setManualBrightness(target, displayID: displayID)
         let work = DispatchWorkItem { [weak self] in
-            self?.coordinator.setManualBrightness(target, displayID: displayID)
+            guard let self else { return }
+            self.pendingSliderWrites[displayID] = nil
+            if let newest = self.desiredSlider[displayID], newest != target {
+                self.coordinator.setManualBrightness(newest, displayID: displayID)
+            }
         }
         pendingSliderWrites[displayID] = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.10, execute: work)
@@ -416,47 +441,54 @@ final class BrightnessMenuModel: ObservableObject {
     func sliderEnded(displayID: String) {
         pendingSliderWrites[displayID]?.cancel()
         pendingSliderWrites[displayID] = nil
-        guard let target = displays.first(where: { $0.id == displayID })?.brightness else { return }
-        coordinator.setManualBrightness(target, displayID: displayID)
+        editingSliders.remove(displayID)
+        guard let target = desiredSlider.removeValue(forKey: displayID) else { coordinator.cancelSlider(displayID); return }
+        coordinator.setManualBrightness(target, displayID: displayID, final: true)
     }
 
     func openLog() {
         NSWorkspace.shared.open(RelayLog.fileURL)
     }
 
-    private func updateLocalSlider(displayID: String, target: UInt16) {
-        guard let index = displays.firstIndex(where: { $0.id == displayID }) else { return }
-        displays[index].brightness = target
-        displays[index].followsAutomatic = false
-        displays[index].brightnessOrigin = displays[index].controlMethod == .softwareDimming
-            ? .liveSoftware
-            : .lastSet
-    }
 }
 
 @MainActor
 private final class DisplayShadeController {
     private var windows: [String: NSWindow] = [:]
+    private var fadingOut: [String: UUID] = [:]
     private var requests: [String: DisplayShadeRequest] = [:]
 
     func apply(_ request: DisplayShadeRequest) {
-        requests[request.display.id] = request
+        let id = request.display.id, prior = requests[id]
+        requests[id] = request
         guard let screen = screen(for: request.display.displayID) else {
             windows[request.display.id]?.orderOut(nil)
             return
         }
 
         let shouldShade = request.isConnected &&
-            request.usesSoftwareDimming && request.brightness < 100
+            ((request.usesSoftwareDimming && request.brightness < 100) || request.extraDim > 0)
         guard shouldShade else {
-            windows[request.display.id]?.orderOut(nil)
+            guard let window = windows[id] else { return }
+            if request.isConnected && (prior?.extraDim ?? 0) > 0 {
+                let token = UUID(); fadingOut[id] = token
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.22; window.contentView?.animator().alphaValue = 0
+                } completionHandler: { [weak self, weak window] in
+                    DispatchQueue.main.async {
+                        guard self?.fadingOut[id] == token else { return }
+                        self?.fadingOut[id] = nil; window?.orderOut(nil)
+                    }
+                }
+            } else if !request.isConnected || fadingOut[id] == nil { window.orderOut(nil) }
             return
         }
+        fadingOut[id] = nil
 
         let window = windows[request.display.id] ?? makeWindow(for: request.display.id)
         windows[request.display.id] = window
         window.setFrame(screen.frame, display: true)
-        let alpha: CGFloat = 1 - CGFloat(request.brightness) / 100
+        let alpha: CGFloat = request.extraDim > 0 ? CGFloat(request.extraDim) / 100 : 1 - CGFloat(request.brightness) / 100
         window.contentView?.alphaValue = min(max(alpha, 0), 1)
         window.orderFrontRegardless()
     }
@@ -639,16 +671,17 @@ private struct DisplayControlCard: View {
                     .foregroundStyle(.secondary)
                 Slider(
                     value: Binding(
-                        get: { Double(state.brightness ?? 50) },
+                        get: { Double(model.desiredSlider[state.id] ?? state.brightness ?? 50) },
                         set: { model.sliderChanged(displayID: state.id, value: $0) }
                     ),
                     in: 0 ... 100,
                     onEditingChanged: { editing in
-                        if !editing { model.sliderEnded(displayID: state.id) }
+                        if editing { model.sliderBegan(state.id) } else { model.sliderEnded(displayID: state.id) }
                     }
                 )
+                .accessibilityLabel("Brightness for " + state.display.name)
                 .disabled(!state.connectionState.isConnected)
-                Text("\(state.brightness ?? 0)%")
+                Text("\(model.desiredSlider[state.id] ?? state.brightness ?? 0)%")
                     .font(.caption.monospacedDigit())
                     .frame(width: 34, alignment: .trailing)
             }
@@ -697,19 +730,34 @@ private struct DisplayControlCard: View {
             .font(.caption2)
             .foregroundStyle(.secondary)
 
-            HStack {
-                Button("Match Air at this level") { model.learnBrightness(id: state.id) }
-                    .help("After adjusting this screen to a comfortable level, save its match to the current Air brightness.")
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    if let target = state.mappedTarget { Text("Mapped target \(target)%") }
+                    Spacer()
+                    Text(state.calibration.summary)
+                }
+                if let note = state.learningNote { Text(note) }
+                HStack {
+                    if state.calibration.canUndo { Button("Undo last match") { model.editCurve(id: state.id, reset: false) } }
+                    if state.calibration.isCalibrated {
+                        if model.resetID == state.id {
+                            Button("Confirm reset") { model.editCurve(id: state.id, reset: true) }
+                            Button("Cancel") { model.resetID = nil }
+                        } else { Button("Reset calibration") { model.resetID = state.id } }
+                    }
+                }
+                if state.controlMethod == .hardwareDDC {
+                    HStack {
+                        Text("Extra dim at minimum")
+                        Slider(value: Binding(get: { Double(state.extraDim) },
+                            set: { model.setExtraDim($0, id: state.id) }), in: 0...60, step: 1)
+                            .accessibilityLabel("Extra dim at minimum for " + state.display.name)
+                        Text(state.extraDim == 0 ? "Off" : "\(state.extraDim)%")
+                    }
                     .disabled(!state.connectionState.isConnected)
-                Spacer()
-                if state.calibration.isCalibrated {
-                    Button("Reset match") { model.learnBrightness(id: state.id, reset: true) }
                 }
             }
             .buttonStyle(.borderless).font(.caption2)
-            if state.calibration.isCalibrated {
-                Text(state.calibration.summary).font(.caption2).foregroundStyle(.secondary)
-            }
             Divider()
             DisplayColorControls(model: model, displayID: state.id,
                                  connected: state.connectionState.isConnected)

@@ -6,6 +6,7 @@
 #include <IOKit/IOReturn.h>
 #include <dlfcn.h>
 #include <math.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -308,21 +309,12 @@ static bool BRWriteVCP(BRDDCTransport transport, uint8_t code, uint16_t value) {
     };
     packet[5] = BRChecksum((uint8_t)(0x6E ^ kDDCDataAddress), packet, 5);
 
-    bool success = false;
-    for (int retry = 0; retry < 5 && !success; retry += 1) {
-        for (int write = 0; write < 2; write += 1) {
-            usleep(10000);
-            success = IOAVServiceWriteI2C(
-                transport.service,
-                transport.chipAddress,
-                kDDCDataAddress,
-                packet,
-                (uint32_t)sizeof(packet)
-            ) == KERN_SUCCESS;
-        }
-        if (!success) usleep(20000);
+    for (int retry = 0; retry < 3; ++retry) {
+        if (retry) usleep(251000);
+        if (IOAVServiceWriteI2C(transport.service, transport.chipAddress, kDDCDataAddress,
+                               packet, (uint32_t)sizeof(packet)) == KERN_SUCCESS) return true;
     }
-    return success;
+    return false;
 }
 
 int32_t BRDDCWriteVCP(uint32_t displayID, uint8_t code, uint16_t value) {
@@ -361,17 +353,35 @@ int32_t BRDisplayGetChromaticities(uint32_t displayID, double *coordinates) {
 
 // Sensor event/CCT approach from TrueTone; lifecycle/fallback patterns from
 // LuxCurve, LumenShift and mac-utils. Only read APIs are used. See NOTICE.
-int32_t BRReadAmbientLight(double *lux, double *kelvin, uint8_t *lidClosed) {
-    if (lux == NULL || kelvin == NULL || lidClosed == NULL) return -1;
+struct BRAmbientReader {
+    CFTypeRef client;
+    CFArrayRef list;
+    io_service_t root;
+    CFIndex preferred;
+};
+
+BRAmbientReader *BRCreateAmbientReader(void) {
+    BRAmbientReader *r = calloc(1, sizeof(*r));
+    if (r) r->root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"));
+    return r;
+}
+void BRReleaseAmbientReader(BRAmbientReader *r) {
+    if (!r) return;
+    if (r->list) CFRelease(r->list);
+    if (r->client) CFRelease(r->client);
+    if (r->root) IOObjectRelease(r->root);
+    free(r);
+}
+
+int32_t BRReadAmbientCached(BRAmbientReader *r, double *lux, double *kelvin, uint8_t *lidClosed) {
+    if (!r || lux == NULL || kelvin == NULL || lidClosed == NULL) return -1;
     *lux = NAN; *kelvin = NAN; *lidClosed = 0;
-    io_service_t root = IOServiceGetMatchingService(kIOMainPortDefault,
-                                                   IOServiceMatching("IOPMrootDomain"));
+    io_service_t root = r->root;
     if (root != IO_OBJECT_NULL) {
         CFTypeRef closed = IORegistryEntryCreateCFProperty(root,
             CFSTR("AppleClamshellState"), kCFAllocatorDefault, 0);
         *lidClosed = BRCFBooleanValue(closed) ? 1 : 0;
         if (closed) CFRelease(closed);
-        IOObjectRelease(root);
     }
     if (*lidClosed) return -2;
     typedef CFTypeRef (*Create)(CFAllocatorRef);
@@ -385,13 +395,18 @@ int32_t BRReadAmbientLight(double *lux, double *kelvin, uint8_t *lidClosed) {
     CopyEvent copyEvent = (CopyEvent)dlsym(RTLD_DEFAULT, "IOHIDServiceClientCopyEvent");
     FloatValue value = (FloatValue)dlsym(RTLD_DEFAULT, "IOHIDEventGetFloatValue");
     if (!create || !match || !services || !copyEvent || !value) return -3;
-    CFTypeRef client = create(kCFAllocatorDefault);
-    if (!client) return -4;
-    match(client, NULL);
-    CFArrayRef list = services(client);
+    if (!r->client) {
+        r->client = create(kCFAllocatorDefault);
+        if (!r->client) return -4;
+        match(r->client, NULL);
+    }
+    if (!r->list) r->list = services(r->client);
+    CFArrayRef list = r->list;
     int32_t result = -5;
     if (list) {
-        for (CFIndex i = 0; i < CFArrayGetCount(list); ++i) {
+        const CFIndex count = CFArrayGetCount(list);
+        for (CFIndex offset = 0; offset < count; ++offset) {
+            const CFIndex i = (r->preferred + offset) % count;
             CFTypeRef event = copyEvent(CFArrayGetValueAtIndex(list, i), 12, 0, 0);
             if (!event) continue;
             double level = value(event, 12 << 16);
@@ -402,12 +417,18 @@ int32_t BRReadAmbientLight(double *lux, double *kelvin, uint8_t *lidClosed) {
             result = 0;
             if (isfinite(cct) && cct >= 1500 && cct <= 20000) {
                 *kelvin = cct;
+                r->preferred = i;
                 break;
             }
         }
-        CFRelease(list);
+        if (result != 0) { CFRelease(r->list); r->list = NULL; }
     }
-    CFRelease(client);
+    return result;
+}
+int32_t BRReadAmbientLight(double *lux, double *kelvin, uint8_t *closed) {
+    BRAmbientReader *r = BRCreateAmbientReader();
+    int32_t result = BRReadAmbientCached(r, lux, kelvin, closed);
+    BRReleaseAmbientReader(r);
     return result;
 }
 
@@ -485,6 +506,7 @@ int32_t BRDisplayGetBuiltInBrightness(double *brightness) {
         if (CGDisplayIsBuiltin(displays[index]) == 0) continue;
         float value = 0.0f;
         int result = DisplayServicesGetBrightness(displays[index], &value);
+        if (result == 0 && !isfinite(value)) return -5;
         if (result == 0) {
             if (value < 0.0f) value = 0.0f;
             if (value > 1.0f) value = 1.0f;

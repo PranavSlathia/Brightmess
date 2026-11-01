@@ -58,6 +58,6 @@ public struct ReplayGuard: Sendable {
         guard expirationByNonce[nonce] == nil else {
             throw RelayProtocolError.replayedEnvelope
         }
-        expirationByNonce[nonce] = now + maximumClockSkew
+        expirationByNonce[nonce] = sentAt + maximumClockSkew
     }
 }

@@ -8,13 +8,14 @@ public struct BrightnessEnvelope: Codable, Equatable, Sendable {
     public let nonce: String
     public let source: String
     public let ambient: AmbientSample?
+    public let metadata: SourceMetadata?
 
     public init(
         brightness: Double,
         sentAt: TimeInterval = Date().timeIntervalSince1970,
         nonce: String = UUID().uuidString,
         source: String,
-        ambient: AmbientSample? = nil
+        ambient: AmbientSample? = nil, metadata: SourceMetadata? = nil
     ) throws {
         guard brightness.isFinite, (0 ... 1).contains(brightness), !source.isEmpty else {
             throw RelayProtocolError.invalidEnvelope
@@ -24,6 +25,7 @@ public struct BrightnessEnvelope: Codable, Equatable, Sendable {
         self.sentAt = sentAt
         self.nonce = nonce
         self.source = source
+        self.metadata = metadata
         self.ambient = ambient
     }
 }
@@ -62,7 +64,10 @@ public struct AmbientEnvelope: Codable, Sendable {
     public let source: String
     public let ambient: AmbientSample
 
-    public init(source: String, ambient: AmbientSample) {
+    public let metadata: SourceMetadata?
+
+    public init(source: String, ambient: AmbientSample, metadata: SourceMetadata? = nil) {
+        self.metadata = metadata
         version = 1
         sentAt = Date().timeIntervalSince1970
         nonce = UUID().uuidString

@@ -13,6 +13,12 @@ extern "C" {
 int32_t BRDisplayGetBuiltInBrightness(double *brightness);
 /// Read-only ambient sensor sample. -1 means unavailable; no readings invented.
 int32_t BRReadAmbientLight(double *lux, double *kelvin, uint8_t *lidClosed);
+typedef struct BRAmbientReader BRAmbientReader;
+BRAmbientReader *BRCreateAmbientReader(void);
+void BRReleaseAmbientReader(BRAmbientReader *reader);
+int32_t BRReadAmbientCached(BRAmbientReader *reader, double *lux, double *kelvin, uint8_t *closed);
+int32_t BRWatchBrightness(void (*callback)(void));
+void BRUnwatchBrightness(void);
 /// EDID chromaticities in rx,ry,gx,gy,bx,by,wx,wy order, resolved per display.
 int32_t BRDisplayGetChromaticities(uint32_t displayID, double *coordinates);
 

@@ -21,6 +21,32 @@ public struct AmbientLightSource: Sendable {
     }
 }
 
+/// Confine each cached reader to one serial executor; recreate it after wake.
+public final class LiveAmbientReader {
+    private var handle = BRCreateAmbientReader()
+    private var levels = MedianWindow(capacity: 3)
+    private var colours = MedianWindow(capacity: 3)
+    public init() {}
+    deinit { BRReleaseAmbientReader(handle) }
+    public func read() -> AmbientSample {
+        var lux = Double.nan, kelvin = Double.nan
+        var closed: UInt8 = 0
+        _ = BRReadAmbientCached(handle, &lux, &kelvin, &closed)
+        guard closed == 0, lux.isFinite else {
+            levels = MedianWindow(capacity: 3); colours = MedianWindow(capacity: 3)
+            return AmbientSample(lux: nil, kelvin: nil, lidClosed: closed != 0)
+        }
+        levels.push(lux)
+        if !kelvin.isFinite { colours = MedianWindow(capacity: 3) } else { colours.push(kelvin) }
+        return AmbientSample(lux: levels.median, kelvin: colours.median)
+    }
+}
+
+public enum BuiltInBrightnessEvents {
+    public static func start(_ handler: @convention(c) () -> Void) -> Bool { BRWatchBrightness(handler) == 0 }
+    public static func stop() { BRUnwatchBrightness() }
+}
+
 extension ExternalDDCController {
     public func colorProfile(of display: ExternalDisplay) -> PanelColorProfile? {
         var xy = [Double](repeating: 0, count: 8)

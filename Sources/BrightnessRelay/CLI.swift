@@ -78,7 +78,10 @@ struct BrightnessRelayCLI {
                 fail(error)
             }
         }
-        dispatchMain()
+        if arguments.command == "source" || arguments.command == "simulation-check" {
+            RunLoop.main.add(Port(), forMode: .default)
+            CFRunLoopRun()
+        } else { dispatchMain() }
     }
 
     private static func fail(_ error: Error) -> Never {
@@ -94,6 +97,10 @@ struct BrightnessRelayCLI {
         switch command {
         case "help", "--help", "-h":
             print(help)
+        #if DEBUG
+        case "simulation-check":
+            try await RuntimeChecks.run()
+        #endif
         case "probe":
             probe()
         case "displays":
@@ -251,8 +258,15 @@ struct BrightnessRelayCLI {
 
     private static func source(_ arguments: CLIArguments) async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
+        let rawMode = arguments.option("--sync-mode") ?? (arguments.option("--interval") == nil ? "live" : "scheduled")
+        guard let mode = SourceMode(rawValue: rawMode) else { throw CLIError.invalidValue("--sync-mode") }
+        if mode == .live {
+            let client = try makeClient(arguments)
+            await LiveAirSource(client: client, name: sourceName).run()
+            return
+        }
         let interval = try arguments.doubleOption("--interval", default: 1_800)
-        guard interval >= 60 else {
+        guard (60...86400).contains(interval) else {
             throw CLIError.invalidValue("--interval")
         }
         let client = try makeClient(arguments)
@@ -451,7 +465,7 @@ struct BrightnessRelayCLI {
                             [--timezone <identifier>] [--fallback-after 2700]
                             [--fallback-interval 300]
       brightness-relay source [--host <mini-host>] [--port 47777]
-                              [--interval 1800] [--token-file <path>]
+                              [--sync-mode live|scheduled] [--interval 1800] [--token-file <path>]
       brightness-relay send <0-100> [--host <host>] [--port 47777]
                              [--token-file <path>]
       brightness-relay solar-sample --latitude <degrees> --longitude <degrees>

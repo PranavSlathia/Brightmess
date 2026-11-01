@@ -55,8 +55,8 @@ struct RelayClient {
         self.authenticator = authenticator
     }
 
-    func send(brightness: Double, source: String, ambient: AmbientSample? = nil) async throws {
-        let envelope = try BrightnessEnvelope(brightness: brightness, source: source, ambient: ambient)
+    func send(brightness: Double, source: String, ambient: AmbientSample? = nil, metadata: SourceMetadata? = nil) async throws {
+        let envelope = try BrightnessEnvelope(brightness: brightness, source: source, ambient: ambient, metadata: metadata)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let body = try encoder.encode(envelope)
@@ -130,8 +130,8 @@ struct RelayClient {
         }
     }
 
-    func sendAmbient(_ ambient: AmbientSample, source: String) async throws {
-        let body = try JSONEncoder().encode(AmbientEnvelope(source: source, ambient: ambient))
+    func sendAmbient(_ ambient: AmbientSample, source: String, metadata: SourceMetadata? = nil) async throws {
+        let body = try JSONEncoder().encode(AmbientEnvelope(source: source, ambient: ambient, metadata: metadata))
         var request = URLRequest(url: brightnessEndpoint.deletingLastPathComponent()
             .appendingPathComponent("ambient"))
         request.httpMethod = "POST"
@@ -172,7 +172,6 @@ struct AppliedBrightnessStatus: Sendable {
     let sourceBrightness: Double
     let displayBrightness: UInt16
     let appliedAt: Date
-    let wroteHardware: Bool
     let changedDisplays: Int
 }
 
@@ -193,6 +192,16 @@ final class RelayHTTPServer {
     private var onListenerFailure: ((Error) -> Void)?
     private var startupCompletion: ((Error?) -> Void)?
     private var replayGuard = ReplayGuard()
+    private var presence = SourcePresence()
+    private var order = SourceOrder()
+    private let started = Date().timeIntervalSince1970
+    private var solarActive = false
+    private var lastSolarAt: Double?
+    private var sessionID: UUID?
+    private var acceptedSamples = 0
+    private var onPresence: ((SourcePresence, Bool) -> Void)?
+    func setOnPresence(_ handler: @escaping (SourcePresence, Bool) -> Void) { onPresence = handler }
+
     private var lastBrightness: UInt16?
     private var lastRemoteUpdateAt: Date?
     private var lastRemoteSource: String?
@@ -208,12 +217,15 @@ final class RelayHTTPServer {
         curve: BrightnessCurve,
         deadband: UInt16 = 2,
         solarFallback: SolarFallbackConfiguration? = nil,
+        loopbackOnly: Bool = false,
         onApplied: ((AppliedBrightnessStatus) -> Void)? = nil
     ) throws {
         guard let networkPort = NWEndpoint.Port(rawValue: port) else {
             throw HTTPRelayError.invalidPort
         }
-        self.listener = try NWListener(using: .tcp, on: networkPort)
+        let parameters = NWParameters.tcp
+        if loopbackOnly { parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: networkPort) }
+        self.listener = try NWListener(using: parameters, on: networkPort)
         self.authenticator = authenticator
         self.displayCoordinator = displayCoordinator
         self.curve = curve
@@ -221,6 +233,8 @@ final class RelayHTTPServer {
         self.solarFallback = solarFallback
         self.onApplied = onApplied
     }
+
+    var boundPort: UInt16? { listener.port?.rawValue }
 
     func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -413,8 +427,22 @@ final class RelayHTTPServer {
                 let envelope = try JSONDecoder().decode(AmbientEnvelope.self, from: request.body)
                 guard !envelope.source.isEmpty else { throw RelayProtocolError.invalidEnvelope }
                 try replayGuard.validate(envelope)
-                lastAmbient = envelope.ambient
-                onAmbient?(envelope.ambient, envelope.source, Date())
+                let time = Date().timeIntervalSince1970
+                let state = envelope.metadata?.state ?? (envelope.ambient.lidClosed ? .lidClosed : .unavailable)
+                guard state != .awake else { throw RelayProtocolError.invalidEnvelope }
+                try order.accept(envelope.metadata, at: time)
+                sessionID = envelope.metadata?.session; acceptedSamples += 1
+                presence.receive(mode: envelope.metadata?.mode ?? .scheduled, state: state,
+                    time: envelope.metadata?.measuredAt ?? envelope.sentAt, brightness: nil)
+                lastRemoteSource = envelope.source
+                displayCoordinator.invalidateSource()
+                onPresence?(presence, solarActive)
+                startFallbackTimer()
+                let colour = state == .asleep || state == .lidClosed
+                    ? AmbientSample(lux: nil, kelvin: nil, sampledAt: time, lidClosed: state == .lidClosed)
+                    : envelope.ambient
+                lastAmbient = colour
+                onAmbient?(colour, envelope.source, Date())
                 respond(to: connection, status: 204, message: "")
             } catch {
                 respond(to: connection, status: 400, message: String(describing: error))
@@ -444,12 +472,20 @@ final class RelayHTTPServer {
                     ["id": $0.id, "name": $0.display.name,
                      "connected": $0.connectionState.isConnected,
                      "brightness": $0.brightness.map { Int($0) } as Any? ?? NSNull(),
-                     "automatic": $0.followsAutomatic,
+                     "automatic": $0.followsAutomatic, "mappedTarget": $0.mappedTarget.map { Int($0) } as Any? ?? NSNull(),
+                     "readingKind": $0.brightnessOrigin.rawValue, "learnedPoints": $0.calibration.count,
+                     "learning": $0.learningNote as Any? ?? NSNull(), "extraDimAtMinimum": Int($0.extraDim),
                      "error": $0.lastError as Any? ?? NSNull(),
                      "method": $0.controlMethod.rawValue]
                 }
+                let writes = displayCoordinator.writeCounts
                 var status: [String: Any] = [
-                    "version": "0.7.0", "displays": displays,
+                    "hardwareWritesSinceStart": writes.hardware, "softwareWritesSinceStart": writes.software,
+                    "version": "0.8.0", "displays": displays,
+                    "acceptedSamplesSinceStart": acceptedSamples, "sourceSession": sessionID?.uuidString as Any? ?? NSNull(),
+                    "sourceMode": presence.mode?.rawValue as Any? ?? NSNull(),
+                    "airBrightnessPercent": presence.raw.map { Int(($0 * 100).rounded()) } as Any? ?? NSNull(),
+                    "sourceState": presence.label(now: Date().timeIntervalSince1970, solar: solarActive),
                     "airSource": lastRemoteSource as Any? ?? NSNull(),
                     "airReadingAgeSeconds": lastRemoteUpdateAt.map { Date().timeIntervalSince($0) } as Any? ?? NSNull(),
                     "pullConnections": pullWaiters.count,
@@ -513,7 +549,14 @@ final class RelayHTTPServer {
                 throw RelayProtocolError.invalidEnvelope
             }
             try replayGuard.validate(envelope)
-            lastRemoteUpdateAt = Date()
+            guard !envelope.source.isEmpty, (envelope.metadata?.state ?? .awake) == .awake,
+                  envelope.ambient?.lidClosed != true else { throw RelayProtocolError.invalidEnvelope }
+            try order.accept(envelope.metadata, at: Date().timeIntervalSince1970)
+            sessionID = envelope.metadata?.session; acceptedSamples += 1
+            let measured = envelope.metadata?.measuredAt ?? envelope.sentAt
+            presence.receive(mode: envelope.metadata?.mode ?? .scheduled, state: .awake, time: measured, brightness: envelope.brightness)
+            solarActive = false; lastSolarAt = nil; onPresence?(presence, false); startFallbackTimer()
+            lastRemoteUpdateAt = Date(timeIntervalSince1970: measured)
             lastRemoteSource = envelope.source
             lastAmbient = envelope.ambient
             onAmbient?(envelope.ambient, envelope.source, Date())
@@ -529,45 +572,46 @@ final class RelayHTTPServer {
     }
 
     private func startFallbackTimer() {
-        guard fallbackTimer == nil, let solarFallback else { return }
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        let startupGrace = min(solarFallback.staleAfter, 45)
-        timer.schedule(deadline: .now() + startupGrace, repeating: solarFallback.updateInterval)
-        timer.setEventHandler { [weak self] in
-            self?.applySolarFallbackIfNeeded(at: Date())
+        let now = Date().timeIntervalSince1970
+        let expiry = presence.cutoff(started: started, scheduledGrace: solarFallback?.staleAfter ?? 2700)
+        let stale = (presence.measurement ?? started) + 90
+        var next = expiry > now ? expiry : (lastSolarAt ?? now) + (solarFallback?.updateInterval ?? 300)
+        if presence.mode == .live && presence.state == .awake && stale > now { next = min(next, stale) }
+        if fallbackTimer == nil {
+            let t = DispatchSource.makeTimerSource(queue: queue)
+            t.setEventHandler { [weak self] in self?.sourceDeadlineReached() }
+            fallbackTimer = t; t.resume()
         }
-        fallbackTimer = timer
-        timer.resume()
+        // An already-expired hold must not be postponed by repeated closed-lid reports.
+        if expiry <= now && !solarActive && solarFallback != nil { next = now }
+        fallbackTimer?.schedule(deadline: .now() + max(0.01, next - now))
     }
 
-    private func applySolarFallbackIfNeeded(at date: Date) {
-        guard let solarFallback else { return }
-        if let lastRemoteUpdateAt,
-           date.timeIntervalSince(lastRemoteUpdateAt) < solarFallback.staleAfter
-        {
-            return
+    private func sourceDeadlineReached() {
+        let date = Date(), now = date.timeIntervalSince1970
+        if presence.mode == .live, let measured = presence.measurement, now - measured >= 90 {
+            displayCoordinator.invalidateSource()
+            onAmbient?(nil, lastRemoteSource ?? "Air", date)
         }
-
-        do {
-            let normalized = solarFallback.normalizedBrightness(at: date)
-            try applyBrightness(normalized, source: "solar-fallback")
-        } catch {
-            RelayLog.write("Solar fallback failed: \(error)")
+        if let fallback = solarFallback,
+           now >= presence.cutoff(started: started, scheduledGrace: fallback.staleAfter) {
+            solarActive = true; lastSolarAt = now
+            do { try applyBrightness(fallback.normalizedBrightness(at: date), source: "solar-fallback") }
+            catch { RelayLog.write("Solar fallback failed: \(error)") }
         }
+        onPresence?(presence, solarActive); startFallbackTimer()
     }
 
     private func applyBrightness(_ normalized: Double, source: String, calibrationSource: Double? = nil) throws {
         let target = curve.map(normalized: normalized)
-        let summary = try displayCoordinator.applyAutomatic(target: target, deadband: deadband,
-                                                           sourceBrightness: calibrationSource)
+        let summary = try displayCoordinator.applyAutomatic(target: target, deadband: presence.mode == .live ? 1 : deadband,
+            sourceBrightness: calibrationSource, measuredAt: lastRemoteUpdateAt, baseCurve: curve)
         lastBrightness = target
-        let wroteHardware = summary.hardwareWrites > 0
         if summary.changedDisplays == 0 {
             RelayLog.write("No automatic display change needed at \(target)% from \(source)")
         } else {
             RelayLog.write(
-                "Applied \(target)% from \(source) to \(summary.changedDisplays) display(s) " +
-                    "(DDC \(summary.hardwareWrites), software \(summary.softwareWrites))"
+                "Following \(source): \(summary.changedDisplays) display transition(s), base target \(target)%"
             )
         }
 
@@ -577,7 +621,6 @@ final class RelayHTTPServer {
                 sourceBrightness: normalized,
                 displayBrightness: lastBrightness ?? target,
                 appliedAt: Date(),
-                wroteHardware: wroteHardware,
                 changedDisplays: summary.changedDisplays
             )
         )

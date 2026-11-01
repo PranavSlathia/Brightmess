@@ -53,6 +53,9 @@ final class DisplayColorController {
     private var suspended: Set<String> = []
     private var sample: AmbientSample?
     private var lastTick = Date()
+    private var pending: DispatchWorkItem?
+    private var paused = false
+    var maximumSampleAge: TimeInterval = 2700
     private(set) var states: [String: DisplayColorState] = [:]
     var onChanged: (([String: DisplayColorState]) -> Void)?
 
@@ -60,6 +63,7 @@ final class DisplayColorController {
         let live = Dictionary(uniqueKeysWithValues: values.filter {
             $0.connectionState.isConnected
         }.map { ($0.id, $0.display) })
+        if displays == live && values.allSatisfy({ states[$0.id] != nil }) { return }
         for (id, old) in displays where live[id]?.displayID != old.displayID {
             restore(id)
             baselines[id] = nil
@@ -127,7 +131,9 @@ final class DisplayColorController {
         tick()
     }
 
+    func resume() { paused = false; tick() }
     func restoreAll() {
+        paused = true; pending?.cancel(); pending = nil
         for id in displays.keys { restore(id) }
     }
 
@@ -146,6 +152,9 @@ final class DisplayColorController {
     }
 
     func tick() {
+        pending?.cancel(); pending = nil
+        guard !paused else { return }
+        var moving = false
         let dt = min(max(Date().timeIntervalSince(lastTick), 0.01), 2)
         lastTick = Date()
         for (id, display) in displays {
@@ -168,7 +177,7 @@ final class DisplayColorController {
                 continue
             }
             if state.settings.mode == .adaptive {
-                if let reason = sample?.unavailableReason() ?? (sample == nil ? "Waiting for Air colour helper" : nil) {
+                if let reason = sample?.unavailableReason(maximumAge: maximumSampleAge) ?? (sample == nil ? "Waiting for Air colour helper" : nil) {
                     restore(id)
                     models[id] = nil
                     state.detail = reason
@@ -214,6 +223,7 @@ final class DisplayColorController {
                     model.intensity = state.settings.strength
                     model.trimK = state.settings.trim
                     model.update(lux: lux, ambientCCT: kelvin, dt: dt)
+                    moving = moving || model.isSettling
                     models[id] = model
                     target = model.displayCCT
                     gains = model.rgbGains()
@@ -244,6 +254,16 @@ final class DisplayColorController {
             }
         }
         onChanged?(states)
+        var delay: TimeInterval? = moving ? 0.5 : nil
+        if let sample, states.values.contains(where: { $0.settings.mode == .adaptive }),
+           sample.unavailableReason(maximumAge: maximumSampleAge) == nil {
+            let expiry = max(0.05, sample.sampledAt + maximumSampleAge - Date().timeIntervalSince1970 + 0.05)
+            delay = min(delay ?? expiry, expiry)
+        }
+        if let delay {
+            let task = DispatchWorkItem { [weak self] in self?.tick() }
+            pending = task; DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: task)
+        }
     }
 
     private func read(_ id: UInt32) throws -> Ramp {

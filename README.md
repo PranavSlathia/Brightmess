@@ -7,11 +7,12 @@ per-screen calibration and independent adaptive white balance.
 
 Automatic mode follows the final brightness chosen by a nearby MacBook Air —
 including macOS ambient-light decisions and your manual corrections. The Air
-sends that value every 30 minutes and answers **Sync Now** requests. If the Air
-has not reported for 45 minutes, the Mini switches to a local solar-elevation
-fallback until the next Air update.
+sends changed values live over Tailscale. A 60-second heartbeat keeps a quiet
+Air fresh; Sync Now still works. The Mini holds the last level for five minutes
+on loss, then uses solar fallback. Legacy scheduled helpers retain their longer
+freshness window.
 
-Version 0.7 reads ambient lux and colour temperature from the Air, then computes
+The relay reads ambient lux and colour temperature from the Air, then computes
 its own True-Tone-like correction for each screen. It does not copy Apple's
 complete internal True Tone transformation. Colour starts Off per display.
 
@@ -43,11 +44,11 @@ Click the sun icon to open the controller:
 
 - one independent brightness slider per connected display;
 - **Follow automatic** per display; dragging a slider changes only that display
-  to manual mode;
+  without disabling automatic following; an explicit off switch stays manual;
 - **Disconnect / Reconnect** per display;
 - **Reconnect All** recovery action;
 - **Off / Adaptive / Manual white balance**, strength and trim per screen;
-- **Match Air at this level** to save independent brightness calibration;
+- automatic per-screen learning, Undo last match and confirmed Reset calibration;
 - Magic Keyboard brightness keys (Accessibility permission required);
 - **Re-detect** to retry DDC and refresh monitor readings;
 - source status for MacBook Air or solar fallback;
@@ -58,28 +59,32 @@ Automatic updates never overwrite a display left in manual mode. Re-enabling
 
 ## White balance and calibration
 
-The Air must be awake, open and in the same room lighting. The updated helper
-sends lux/CCT with the existing 30-minute brightness packet and on Sync Now.
-Three brief read-only samples are median-filtered at each sync. There is no
-two-second network or brightness-control loop.
+The Air must be awake and open and is trusted whenever reachable, regardless of
+location. Live mode listens for built-in brightness notifications and uses a
+two-second watchdog and cached ambient sensor. Only material changes, Sync Now,
+lifecycle events and a 60-second heartbeat are sent. One request is in flight;
+the newest pending sample wins. No DDC writes are needed on a steady input.
+Use `source --sync-mode scheduled --interval 1800` for the old schedule.
 
 Each monitor resolves its own EDID primaries and baseline colour table.
 Unknown primaries use a labelled sRGB estimate. Adaptive corrections ease toward
 the new target. Missing, closed-lid, too-dark and expired readings restore the
-owned baseline. Colour data expires after 45 minutes. The menu distinguishes
+owned baseline. Live colour expires after 90 seconds; scheduled colour expires after 45 minutes. The menu distinguishes
 an old Air helper from an unavailable sensor.
 
 Manual white balance accepts 3500–7500 K targets. Reset restores the baseline.
 Colour pauses during active HDR or interference from another colour-control
 app. API readback verifies the table, not physical colour accuracy.
 
-For brightness matching: adjust this monitor to a comfortable level, sync the
-Air, then choose **Match Air at this level**. A second match at a different Air
-brightness defines a slope. Saving a match re-enables Follow automatic.
-Samsung and TV anchors are separate; Reset match removes them.
+With Follow automatic on, adjust a screen to a comfortable level. Releasing
+its slider, or finishing a group of keyboard presses, learns one match to the
+fresh Air percentage and leaves Auto on. The newest match wins; other points
+form a monotonic curve. No learning from stale input, solar fallback, fades
+or reconnects. Undo/reset are independent per screen. "Mapped target" is not
+a hardware measurement: Samsung shows its last DDC command and TV its applied
+software level. Optional Samsung extra dimming applies only at hardware zero.
 
-Keyboard keys adjust all connected screens, switching them to manual brightness.
-Plain keys use 6% steps; Option+Shift uses 1%. The menu's Enable button requests
+Keyboard keys adjust both connected displays. Plain keys use 6% steps; Option+Shift uses 1%. The menu's Enable button requests
 Accessibility permission. Approve Brightness Relay in macOS settings.
 
 Reused components include TrueTone's colour/calibration maths, LuxCurve filtering
@@ -98,7 +103,7 @@ Mac mini receiver + per-display coordinator
         ├─ Samsung LU28R55 → targeted DDC VCP 0x10
         └─ Beyond TV      → per-screen software shade
 
-Air unavailable for 45 minutes
+Live Air unavailable for 5 minutes
         ↓
 SunKit solar elevation, refreshed every 5 minutes
         ↓
@@ -144,7 +149,7 @@ Or create the private AirDrop bundle:
 ```
 
 Keep **Automatically adjust brightness** enabled on the Air. The Air source
-runs every 30 minutes while that user is logged in and keeps an outbound
+runs in live mode while that user is logged in and keeps an outbound
 long-poll open for **Sync Now**.
 
 The installed fallback coordinates are `26.1, 91.7`, timezone `Asia/Kolkata`.
@@ -176,12 +181,12 @@ The current CLT SwiftBuild engine has duplicate platform specifications.
 ./scripts/swiftpm.sh run brightness-self-test
 ```
 
-The self-test runs 15 executable groups covering brightness/colour calibration,
+The self-test runs 21 executable groups covering brightness/colour calibration,
 sensor validity/expiry, backwards compatibility, authenticated and replay-safe
 packets, keyboard steps and disconnect policy. The Swift Testing suite remains
 under Tests/; the current Command Line Tools lacks that testing module.
 
-Version 0.7 diagnostics and update packaging:
+Version 0.8 diagnostics and update packaging:
 
 ```sh
 brightness-relay status --host 127.0.0.1
@@ -204,7 +209,7 @@ an update, remove the old Brightness Relay entry, add
 `~/Applications/Brightness Relay.app` again, and enable it. A valid, stable
 signing identity is needed to avoid this local-build reapproval step.
 
-Current integration evidence and unverified cases:
+Historical 0.7 integration evidence:
 [research/IMPLEMENTATION-0.7.0.md](research/IMPLEMENTATION-0.7.0.md).
 
 The private Air update ZIP in Downloads contains the pairing token. Transfer it
@@ -216,3 +221,21 @@ supply colour readings until updated.
 The DDC transport uses private-but-local macOS display services because Apple
 does not expose external DDC control through a supported public API. This is a
 local passion project, not a Mac App Store target.
+
+## 0.8 verification and rollback
+
+Run `BR_TEST_LOG="$TMPDIR/brightness-relay-simulation.log" ./scripts/swiftpm.sh run brightness-relay simulation-check`
+for the debug-only loopback publisher/HTTP/display simulation. No physical
+monitor, user pairing token or production preferences are used. Use
+`zsh scripts/measure-relay.sh mini` or `air` for a ten-minute CPU sample.
+
+Install the Mini first, then run `zsh scripts/package-air-update.sh` and
+privately copy the 0.8.0 ZIP to the Air. Both installers keep backups in
+`~/Library/Application Support/Brightness Relay/Backups/`. Run the appropriate
+rollback command **from its backup folder** to restore the previous helper
+and LaunchAgent. The Air installer verifies a new live session, not merely a
+successful copy or scheduled packet. A rebuilt ad-hoc Mini app can require
+re-adding it in macOS Accessibility settings.
+
+A separate physical desk sensor is not implemented. Solar fallback estimates
+brightness only and never invents an ambient colour reading.

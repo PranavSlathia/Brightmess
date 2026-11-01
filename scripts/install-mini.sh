@@ -24,8 +24,8 @@ plutil -insert CFBundleIdentifier -string dev.pranav.BrightnessRelay "$INFO"
 plutil -insert CFBundleName -string "Brightness Relay" "$INFO"
 plutil -insert CFBundleDisplayName -string "Brightness Relay" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
-plutil -insert CFBundleShortVersionString -string 0.7.0 "$INFO"
-plutil -insert CFBundleVersion -string 7 "$INFO"
+plutil -insert CFBundleShortVersionString -string 0.8.0 "$INFO"
+plutil -insert CFBundleVersion -string 8 "$INFO"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$INFO"
 plutil -insert LSUIElement -bool true "$INFO"
 plutil -insert NSHighResolutionCapable -bool true "$INFO"
@@ -34,10 +34,13 @@ plutil -insert NSHighResolutionCapable -bool true "$INFO"
 SIGNING_IDENTITY="${BR_SIGNING_IDENTITY:--}"
 codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$STAGED_APP"
 codesign --verify --strict "$STAGED_APP"
+mkdir -p "$BACKUP"
+[[ ! -f "$HOME/.local/bin/brightness-relay" ]] || cp -p "$HOME/.local/bin/brightness-relay" "$BACKUP/cli"
 install -m 755 .build/release/brightness-relay "$HOME/.local/bin/brightness-relay"
 [[ -f "$TOKEN" ]] || "$HOME/.local/bin/brightness-relay" token create
 
 mkdir -p "$BACKUP"
+install -m 755 "$ROOT/scripts/rollback-mini.sh" "$BACKUP/Rollback Mini.command"
 [[ ! -f "$PLIST" ]] || cp -p "$PLIST" "$BACKUP/receiver.plist"
 launchctl bootout "gui/$(id -u)/dev.pranav.brightness-relay.receiver" >/dev/null 2>&1 || true
 pkill -TERM -f "^$APP/Contents/MacOS/brightness-relay menu" >/dev/null 2>&1 || true
@@ -70,5 +73,19 @@ if [[ ! -f "$PLIST" ]]; then
   plutil -insert StandardErrorPath -string "$HOME/Library/Logs/BrightnessRelay-receiver.log" "$PLIST"
 fi
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "Brightness Relay 0.7.0 installed. Previous app and launch settings: $BACKUP"
+if launchctl bootstrap "gui/$(id -u)" "$PLIST"; then
+  for attempt in {1..45}; do
+    if "$HOME/.local/bin/brightness-relay" status --host 127.0.0.1 2>/dev/null |
+        plutil -extract version raw -o - - 2>/dev/null | grep -qx '0.8.0'; then
+      print "0.8 receiver verified."
+      break
+    fi
+    sleep 2
+  done
+fi
+if ! "$HOME/.local/bin/brightness-relay" status --host 127.0.0.1 2>/dev/null |
+     plutil -extract version raw -o - - 2>/dev/null | grep -qx '0.8.0'; then
+  if [[ -f "$BACKUP/receiver.plist" && -d "$BACKUP/Brightness Relay.app" ]]; then zsh "$BACKUP/Rollback Mini.command"; fi
+  print -u2 "0.8 receiver did not start; see $BACKUP"; exit 1
+fi
+echo "Brightness Relay 0.8.0 installed. Previous app and launch settings: $BACKUP"

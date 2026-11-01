@@ -4,7 +4,10 @@ enum RelayLog {
     private static let lock = NSLock()
 
     static var fileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        #if DEBUG
+        if let path = ProcessInfo.processInfo.environment["BR_TEST_LOG"] { return URL(fileURLWithPath: path) }
+        #endif
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/BrightnessRelay-receiver.log")
     }
 

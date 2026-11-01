@@ -34,7 +34,10 @@ struct ManagedDisplayState: Identifiable, Sendable {
     var connectionState: DisplayConnectionState
     var lastReadAt: Date?
     var lastError: String?
-    var calibration = BrightnessCalibration()
+    var calibration = LearnedCurve()
+    var mappedTarget: UInt16?
+    var learningNote: String?
+    var extraDim: UInt16 = 0
 
     var id: String { display.id }
 }
@@ -42,8 +45,6 @@ struct ManagedDisplayState: Identifiable, Sendable {
 struct DisplayApplySummary: Sendable {
     let target: UInt16
     let changedDisplays: Int
-    let hardwareWrites: Int
-    let softwareWrites: Int
 }
 
 struct DisplayShadeRequest: Sendable {
@@ -51,13 +52,21 @@ struct DisplayShadeRequest: Sendable {
     let brightness: UInt16
     let isConnected: Bool
     let usesSoftwareDimming: Bool
+    let extraDim: UInt16
 }
+
+protocol DisplayDriver {
+    func displays() -> [ExternalDisplay]
+    func set(percentage: UInt16, on display: ExternalDisplay) throws
+    func readBrightness(of display: ExternalDisplay) throws -> DDCValue
+}
+extension ExternalDDCController: DisplayDriver {}
 
 final class DisplayCoordinator: @unchecked Sendable {
     typealias StateHandler = @Sendable ([ManagedDisplayState]) -> Void
     typealias ShadeHandler = @Sendable (DisplayShadeRequest) -> Void
 
-    private let hardware: ExternalDDCController
+    private let hardware: any DisplayDriver
     private let connection: DisplayConnectionController
     private let queue = DispatchQueue(label: "dev.pranav.brightness-relay.displays")
     private let defaults: UserDefaults
@@ -67,9 +76,24 @@ final class DisplayCoordinator: @unchecked Sendable {
     private var latestAutomaticTarget: UInt16?
     private var latestSourceBrightness: Double?
     private var latestSourceAt: Date?
+    private var hardwareWrites = 0, softwareWrites = 0
+    var writeCounts: (hardware: Int, software: Int) { queue.sync { (hardwareWrites, softwareWrites) } }
+    private var baseCurve = try! BrightnessCurve()
+    private var ramps: [String: LevelTransition] = [:]
+    private var ticks: [String: DispatchWorkItem] = [:]
+    private var lastHardware: [String: Double] = [:]
+    private struct Gesture { let bin: Int?; var stable: Bool; var level: UInt16 }
+    private var gestures: [String: Gesture] = [:]
+    private var keyEnds: [String: DispatchWorkItem] = [:]
+    private var now: Double { ProcessInfo.processInfo.systemUptime }
+    private var freshBin: Int? {
+        guard let b = latestSourceBrightness, let at = latestSourceAt,
+              Date().timeIntervalSince(at) < 90 else { return nil }
+        return Int((b * 100).rounded())
+    }
 
     init(
-        hardware: ExternalDDCController,
+        hardware: any DisplayDriver,
         connection: DisplayConnectionController = DisplayConnectionController(),
         defaults: UserDefaults = .standard
     ) {
@@ -136,122 +160,164 @@ final class DisplayCoordinator: @unchecked Sendable {
         }
     }
 
+    func invalidateSource() {
+        queue.sync { latestSourceAt = nil; latestSourceBrightness = nil; for id in gestures.keys { gestures[id]?.stable = false } }
+    }
+
     func applyAutomatic(target: UInt16, deadband: UInt16,
-                        sourceBrightness: Double? = nil) throws -> DisplayApplySummary {
+                        sourceBrightness: Double? = nil, measuredAt: Date? = nil, baseCurve: BrightnessCurve) throws -> DisplayApplySummary {
         try queue.sync {
             guard states.contains(where: { $0.connectionState.isConnected }) else {
                 throw BrightnessHardwareError.noExternalDDCDisplay
             }
+            self.baseCurve = baseCurve
             latestAutomaticTarget = target
-            if let sourceBrightness {
-                latestSourceBrightness = sourceBrightness
-                latestSourceAt = Date()
-            }
+            latestSourceBrightness = sourceBrightness
+            latestSourceAt = sourceBrightness == nil ? nil : measuredAt
+            let bin = freshBin
+            for id in gestures.keys where gestures[id]?.bin != bin { gestures[id]?.stable = false }
             var changed = 0
-            var hardwareWrites = 0
-            var softwareWrites = 0
-
-            for index in states.indices
-                where states[index].followsAutomatic &&
-                    states[index].connectionState.isConnected
-            {
-                let displayTarget = sourceBrightness.map {
-                    states[index].calibration.isCalibrated
-                        ? UInt16(states[index].calibration.luminance(forBuiltin: $0))
-                        : target
-                } ?? target
-                if states[index].controlMethod != .detecting,
-                   let current = states[index].brightness,
-                   abs(Int(current) - Int(displayTarget)) < Int(deadband)
-                {
-                    continue
-                }
-                guard let method = apply(target: displayTarget, at: index) else { continue }
-                changed += 1
-                if method == .hardwareDDC {
-                    hardwareWrites += 1
-                } else {
-                    softwareWrites += 1
-                }
+            for i in states.indices where states[i].connectionState.isConnected {
+                let target = calibratedTarget(at: i, fallback: target)
+                states[i].mappedTarget = target
+                guard states[i].followsAutomatic, gestures[states[i].id] == nil else { continue }
+                if let current = states[i].brightness, ramps[states[i].id] == nil,
+                   abs(Int(current)-Int(target)) < Int(max(1, deadband)) { continue }
+                if drive(target, at: i, fade: true) { changed += 1 }
             }
             publish()
-            return DisplayApplySummary(
-                target: target,
-                changedDisplays: changed,
-                hardwareWrites: hardwareWrites,
-                softwareWrites: softwareWrites
-            )
+            return DisplayApplySummary(target: target, changedDisplays: changed)
         }
     }
 
-    func learnCalibration(displayID: String, reset: Bool = false) {
-        queue.async { [weak self] in
-            guard let self, let index = self.states.firstIndex(where: { $0.id == displayID }) else { return }
-            if reset {
-                self.states[index].calibration.reset()
-            } else {
-                guard let source = self.latestSourceBrightness,
-                      let date = self.latestSourceAt, Date().timeIntervalSince(date) < 2700,
-                      let brightness = self.states[index].brightness else {
-                    self.states[index].lastError = "Sync the Air before saving a brightness match"
-                    self.publish()
-                    return
+    private func saveCurve(_ i: Int) {
+        if let data = try? JSONEncoder().encode(states[i].calibration) {
+            defaults.set(data, forKey: preferenceKey(states[i].id, "calibrationV2"))
+        }
+    }
+
+    func editCurve(displayID: String, reset: Bool) {
+        queue.async {
+            guard let i = self.states.firstIndex(where: { $0.id == displayID }) else { return }
+            if reset { self.states[i].calibration.reset() } else { self.states[i].calibration.undo() }
+            self.states[i].learningNote = reset ? "Calibration reset" : "Last match undone"
+            self.saveCurve(i)
+            if let target = self.latestAutomaticTarget {
+                let level = self.calibratedTarget(at: i, fallback: target)
+                self.states[i].mappedTarget = level
+                if self.states[i].followsAutomatic && self.states[i].connectionState.isConnected {
+                    _ = self.drive(level, at: i, fade: true)
                 }
-                self.states[index].calibration.record(builtin: source, luminance: Int(brightness))
-                self.states[index].followsAutomatic = true
-                self.defaults.set(true, forKey: self.preferenceKey(displayID, "followsAutomatic"))
             }
-            if let data = try? JSONEncoder().encode(self.states[index].calibration) {
-                self.defaults.set(data, forKey: self.preferenceKey(displayID, "calibration"))
-            }
-            self.states[index].lastError = nil
             self.publish()
         }
     }
 
-    func setManualBrightness(_ target: UInt16, displayID: String) {
-        queue.async { [weak self] in
-            guard let self,
-                  let index = self.states.firstIndex(where: { $0.id == displayID }),
-                  self.states[index].connectionState.isConnected
-            else { return }
-            self.states[index].followsAutomatic = false
-            self.defaults.set(false, forKey: self.preferenceKey(displayID, "followsAutomatic"))
-            _ = self.apply(target: min(target, 100), at: index)
+    func setExtraDim(_ amount: UInt16, displayID: String) {
+        queue.async {
+            guard let i = self.states.firstIndex(where: { $0.id == displayID }),
+                  self.states[i].controlMethod == .hardwareDDC else { return }
+            self.states[i].extraDim = min(60, amount)
+            self.defaults.set(Int(self.states[i].extraDim), forKey: self.preferenceKey(displayID, "extraDim"))
+            self.publishShade(for: self.states[i]); self.publish()
+        }
+    }
+
+    private func beginOrUpdate(_ level: UInt16, index i: Int) {
+        let id = states[i].id
+        if gestures[id] == nil {
+            gestures[id] = Gesture(bin: freshBin, stable: freshBin != nil, level: level)
+        } else { gestures[id]?.level = level }
+        _ = drive(level, at: i, fade: false)
+    }
+
+    private func finishGesture(_ id: String) {
+        keyEnds.removeValue(forKey: id)?.cancel()
+        guard let g = gestures.removeValue(forKey: id), let i = states.firstIndex(where: { $0.id == id }),
+              states[i].connectionState.isConnected else { return }
+        guard states[i].followsAutomatic else { states[i].learningNote = "Manual · not learning"; publish(); return }
+        guard let x = freshBin, x == g.bin, g.stable else {
+            states[i].learningNote = "Not learned: need a stable, fresh Air level"
+            if freshBin != nil, let mapped = states[i].mappedTarget { _ = drive(mapped, at: i, fade: true) }
+            publish(); return
+        }
+        states[i].calibration.learn(Double(x)/100, Int(g.level)); saveCurve(i)
+        states[i].mappedTarget = g.level
+        states[i].learningNote = "Learned: Air \(x)% → \(g.level)%"
+        publish()
+    }
+
+    func beginSlider(_ id: String) {
+        queue.async {
+            guard let i = self.states.firstIndex(where: { $0.id == id }), self.states[i].connectionState.isConnected else { return }
+            self.keyEnds.removeValue(forKey: id)?.cancel()
+            self.cancelMotion(id)
+            self.gestures[id] = Gesture(bin: self.freshBin, stable: self.freshBin != nil, level: self.states[i].brightness ?? 50)
+        }
+    }
+    func cancelSlider(_ id: String) {
+        queue.async {
+            self.gestures[id] = nil
+            if let i = self.states.firstIndex(where: { $0.id == id }), self.states[i].followsAutomatic,
+               let goal = self.states[i].mappedTarget { _ = self.drive(goal, at: i, fade: true) }
+        }
+    }
+
+    func setManualBrightness(_ target: UInt16, displayID: String, final: Bool = false) {
+        queue.async {
+            guard let i = self.states.firstIndex(where: { $0.id == displayID }), self.states[i].connectionState.isConnected else { return }
+            self.beginOrUpdate(min(100,target), index: i)
+            if final { self.finishGesture(displayID) }
             self.publish()
         }
     }
 
-    func adjustManualBrightness(
-        direction: BrightnessStepDirection,
-        fine: Bool
-    ) {
-        queue.async { [weak self] in
-            guard let self else { return }
-            var handled = false
-            for index in self.states.indices
-                where self.states[index].connectionState.isConnected
-            {
-                let current = self.states[index].brightness ??
-                    self.latestAutomaticTarget ?? 50
-                let target = BrightnessStepPolicy.next(
-                    from: current,
-                    direction: direction,
-                    fine: fine
-                )
-                self.states[index].followsAutomatic = false
-                self.defaults.set(
-                    false,
-                    forKey: self.preferenceKey(
-                        self.states[index].id,
-                        "followsAutomatic"
-                    )
-                )
-                _ = self.apply(target: target, at: index)
-                handled = true
+    func adjustManualBrightness(direction: BrightnessStepDirection, fine: Bool) {
+        queue.async { [self] in
+            for i in self.states.indices where self.states[i].connectionState.isConnected {
+                let id = self.states[i].id
+                let from = self.gestures[id]?.level ?? self.states[i].brightness ?? 50
+                self.beginOrUpdate(BrightnessStepPolicy.next(from: from, direction: direction, fine: fine), index: i)
+                self.keyEnds[id]?.cancel()
+                let work = DispatchWorkItem { [weak self] in self?.finishGesture(id) }
+                self.keyEnds[id] = work; self.queue.asyncAfter(deadline: .now()+1, execute: work)
             }
-            if handled { self.publish() }
+            self.publish()
         }
+    }
+
+    private func cancelMotion(_ id: String) {
+        ticks.removeValue(forKey: id)?.cancel(); ramps[id] = nil
+    }
+
+    @discardableResult private func drive(_ goal: UInt16, at i: Int, fade: Bool) -> Bool {
+        guard states[i].connectionState.isConnected else { return false }
+        let id = states[i].id
+        if fade, ramps[id]?.goal == goal { return false }
+        cancelMotion(id)
+        if states[i].brightness == goal && states[i].controlMethod != .detecting { return false }
+        ramps[id] = LevelTransition(start: states[i].brightness ?? goal, goal: goal,
+                                    began: now, duration: fade ? 0.9 : 0)
+        step(id); return true
+    }
+
+    private func step(_ id: String) {
+        guard let ramp = ramps[id], let i = states.firstIndex(where: { $0.id == id }),
+              states[i].connectionState.isConnected else { cancelMotion(id); return }
+        let hardware = states[i].controlMethod != .softwareDimming
+        let remaining = hardware ? (lastHardware[id] ?? -.infinity) + 0.251 - now : 0
+        if remaining <= 0 {
+            let value = ramp.value(at: now)
+            if states[i].brightness != value || states[i].controlMethod == .detecting {
+                _ = apply(target: value, at: i, save: value == ramp.goal)
+                if hardware { lastHardware[id] = now }
+                publish()
+            }
+            if value == ramp.goal { persist(state: states[i]); cancelMotion(id); return }
+        }
+        let delay = remaining > 0 ? remaining : (hardware ? 0.251 : 0.05)
+        let work = DispatchWorkItem { [weak self] in self?.step(id) }
+        ticks[id] = work; queue.asyncAfter(deadline: .now()+delay, execute: work)
     }
 
     func setFollowsAutomatic(_ follows: Bool, displayID: String) {
@@ -259,13 +325,14 @@ final class DisplayCoordinator: @unchecked Sendable {
             guard let self,
                   let index = self.states.firstIndex(where: { $0.id == displayID })
             else { return }
+            self.cancelMotion(displayID); self.keyEnds.removeValue(forKey: displayID)?.cancel(); self.gestures[displayID] = nil
             self.states[index].followsAutomatic = follows
             self.defaults.set(follows, forKey: self.preferenceKey(displayID, "followsAutomatic"))
             if follows,
                let target = self.latestAutomaticTarget,
                self.states[index].connectionState.isConnected
             {
-                _ = self.apply(target: self.calibratedTarget(at: index, fallback: target), at: index)
+                _ = self.drive(self.calibratedTarget(at: index, fallback: target), at: index, fade: true)
             }
             self.publish()
         }
@@ -312,10 +379,12 @@ final class DisplayCoordinator: @unchecked Sendable {
                         "controlMethod"
                     )
                 )
-                if let brightness = self.states[index].brightness {
-                    _ = self.apply(target: brightness, at: index)
+                if self.now - (self.lastHardware[self.states[index].id] ?? -.infinity) >= 1 {
+                    self.readBrightness(at: index)
                 }
-                self.readBrightness(at: index)
+                if self.states[index].controlMethod == .detecting, let brightness = self.states[index].brightness {
+                    _ = self.drive(brightness, at: index, fade: false)
+                }
             }
             self.publish()
         }
@@ -335,6 +404,7 @@ final class DisplayCoordinator: @unchecked Sendable {
         }
 
         let display = states[index].display
+        cancelMotion(display.id); keyEnds.removeValue(forKey: display.id)?.cancel(); gestures[display.id] = nil
         states[index].connectionState = .disconnecting
         states[index].lastError = nil
         publish()
@@ -388,8 +458,8 @@ final class DisplayCoordinator: @unchecked Sendable {
             states[currentIndex].lastError = nil
             let target = followsAutomatic ? (latestAutomaticTarget ?? savedBrightness) : savedBrightness
             if let target {
-                _ = apply(target: followsAutomatic ? calibratedTarget(at: currentIndex, fallback: target) : target,
-                          at: currentIndex)
+                states[currentIndex].brightness = nil // IO route was rebuilt; cached output is not proof of restore.
+                _ = drive(followsAutomatic ? calibratedTarget(at: currentIndex, fallback: target) : target, at: currentIndex, fade: true)
             } else {
                 readBrightness(at: currentIndex)
             }
@@ -425,7 +495,7 @@ final class DisplayCoordinator: @unchecked Sendable {
                     lastError: liveDisplays.count > 1 &&
                         old.lastError == String(describing: DisplayConnectionError.lastActiveDisplay)
                         ? nil : old.lastError,
-                    calibration: old.calibration
+                    calibration: old.calibration, mappedTarget: old.mappedTarget, learningNote: old.learningNote, extraDim: old.extraDim
                 )
             }
             return makeInitialState(display: display, connectionState: .connected)
@@ -453,7 +523,7 @@ final class DisplayCoordinator: @unchecked Sendable {
                         connectionState: .disconnected,
                         lastReadAt: old.lastReadAt,
                         lastError: old.lastError,
-                        calibration: old.calibration
+                        calibration: old.calibration, mappedTarget: old.mappedTarget, learningNote: old.learningNote, extraDim: old.extraDim
                     )
                 )
             } else {
@@ -504,14 +574,24 @@ final class DisplayCoordinator: @unchecked Sendable {
             connectionState: connectionState,
             lastReadAt: nil,
             lastError: nil,
-            calibration: defaults.data(forKey: preferenceKey(display.id, "calibration"))
-                .flatMap { try? JSONDecoder().decode(BrightnessCalibration.self, from: $0) }
-                ?? BrightnessCalibration()
+            calibration: initialCurve(display.id),
+            extraDim: UInt16(clamping: min(60,max(0,defaults.integer(forKey: preferenceKey(display.id, "extraDim")))))
         )
     }
 
+    private func initialCurve(_ id: String) -> LearnedCurve {
+        let key = preferenceKey(id, "calibrationV2")
+        let stored = defaults.data(forKey: key)
+        if let stored, let curve = try? JSONDecoder().decode(LearnedCurve.self, from: stored) { return curve }
+        let old = defaults.data(forKey: preferenceKey(id, "calibration"))
+            .flatMap { try? JSONDecoder().decode(BrightnessCalibration.self, from: $0) }
+        let migrated = LearnedCurve(legacy: old)
+        if stored == nil, old != nil, let data = try? JSONEncoder().encode(migrated) { defaults.set(data, forKey: key) }
+        return migrated
+    }
+
     @discardableResult
-    private func apply(target: UInt16, at index: Int) -> DisplayControlMethod? {
+    private func apply(target: UInt16, at index: Int, save: Bool = true) -> DisplayControlMethod? {
         guard states.indices.contains(index),
               states[index].connectionState.isConnected
         else { return nil }
@@ -522,11 +602,12 @@ final class DisplayCoordinator: @unchecked Sendable {
         if states[index].controlMethod != .softwareDimming {
             do {
                 try hardware.set(percentage: boundedTarget, on: display)
+                hardwareWrites += 1
                 states[index].brightness = boundedTarget
                 states[index].brightnessOrigin = .lastSet
                 states[index].controlMethod = .hardwareDDC
                 states[index].lastError = nil
-                persist(state: states[index])
+                if save { persist(state: states[index]) }
                 publishShade(for: states[index])
                 RelayLog.write("Applied \(boundedTarget)% to \(display.name) through DDC")
                 return .hardwareDDC
@@ -539,7 +620,8 @@ final class DisplayCoordinator: @unchecked Sendable {
 
         states[index].brightness = boundedTarget
         states[index].brightnessOrigin = .liveSoftware
-        persist(state: states[index])
+        softwareWrites += 1
+        if save { persist(state: states[index]) }
         publishShade(for: states[index])
         return .softwareDimming
     }
@@ -588,7 +670,7 @@ final class DisplayCoordinator: @unchecked Sendable {
         guard let source = latestSourceBrightness,
               let date = latestSourceAt, Date().timeIntervalSince(date) < 2700,
               states[index].calibration.isCalibrated else { return fallback }
-        return UInt16(states[index].calibration.luminance(forBuiltin: source))
+        return states[index].calibration.target(source, base: baseCurve)
     }
 
     private func publishShade(for state: ManagedDisplayState) {
@@ -597,7 +679,8 @@ final class DisplayCoordinator: @unchecked Sendable {
                 display: state.display,
                 brightness: state.brightness ?? 100,
                 isConnected: state.connectionState.isConnected,
-                usesSoftwareDimming: state.controlMethod == .softwareDimming
+                usesSoftwareDimming: state.controlMethod == .softwareDimming,
+                extraDim: state.controlMethod == .hardwareDDC && state.brightness == 0 ? state.extraDim : 0
             )
         )
     }

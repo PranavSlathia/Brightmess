@@ -27,6 +27,10 @@ public struct AdaptiveWhitePoint: Sendable {
     /// Smoothed state, in mired (10^6 / Kelvin). nil until first update.
     public private(set) var currentMired: Double?
     private var acceptedTargetMired: Double?
+    public var isSettling: Bool {
+        guard let currentMired, let acceptedTargetMired else { return false }
+        return abs(currentMired - acceptedTargetMired) > 0.002
+    }
 
     /// The CCT the screen is currently being driven to (for the readout).
     public var displayCCT: Double { currentMired.map { 1_000_000 / $0 } ?? nativeCCT }

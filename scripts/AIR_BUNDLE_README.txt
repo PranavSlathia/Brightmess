@@ -7,8 +7,7 @@ BRIGHTNESS RELAY — MACBOOK AIR SETUP
 
 The installer verifies that it can read the built-in display, installs a small
 login agent, and starts relaying brightness to the Mac mini over Tailscale.
-It samples automatically every 30 minutes. Use Sync Now from the Mini's
-Brightness Relay menu for an immediate fresh reading.
+It sends live brightness changes and filtered room readings; Sync Now is still available.
 
 The pairing token in this folder controls the Mini's brightness receiver. Do not
 share it. Delete this setup folder and its ZIP after installation.
