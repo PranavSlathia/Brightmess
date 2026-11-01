@@ -1,0 +1,77 @@
+{
+  "assessedOn": "2026-11-01",
+  "repositories": [
+    {
+      "name": "TrueTone",
+      "commit": "4bf513544163c230483ace6c40bd88e4760f3993",
+      "committedAt": "2026-09-26T11:54:35+03:00",
+      "subject": "Install in one command instead of a Gatekeeper dance",
+      "origin": "https://github.com/SaintD1smas/TrueTone.git",
+      "localPath": "research/repos/TrueTone",
+      "workingTreeStatus": ""
+    },
+    {
+      "name": "lunarsensor",
+      "commit": "d66329e857372f738d4fbab85c744954e77b7949",
+      "committedAt": "2026-07-20T11:23:54+03:00",
+      "subject": "Never serve a fabricated lux reading: last_lux seeded to None instead of 400.0, so a missing entity, rejected token or failing sensor answers 503 and emits nothing instead of a plausible constant Lunar would adapt to; keep a real reading for 30s to ride out blips, and retry entity discovery so a cold-booted Home Assistant is not permanently sensor-less",
+      "origin": "https://github.com/alin23/lunarsensor.git",
+      "localPath": "research/repos/lunarsensor",
+      "workingTreeStatus": ""
+    },
+    {
+      "name": "ddc-mirror",
+      "commit": "4b7cd572630274cdc5db529957ec22ee06817666",
+      "committedAt": "2026-05-17T09:25:09-05:00",
+      "subject": "Resync displays after dock reconnect",
+      "origin": "https://github.com/emin93/ddc-mirror.git",
+      "localPath": "research/repos/ddc-mirror",
+      "workingTreeStatus": ""
+    },
+    {
+      "name": "LuxCurve",
+      "commit": "7a6becceb353c97fe9e9aeb94857baa9eb6b311a",
+      "committedAt": "2026-10-30T17:58:59+07:00",
+      "subject": "Bump version to 0.2.0",
+      "origin": "https://github.com/nonml/LuxCurve.git",
+      "localPath": "research/repos/LuxCurve",
+      "workingTreeStatus": ""
+    },
+    {
+      "name": "LumenShift",
+      "commit": "b4bd31f19652cbd01f5d42213023ac69ceed2dee",
+      "committedAt": "2026-09-18T17:52:22+05:30",
+      "subject": "Add off-state screenshot to README",
+      "origin": "https://github.com/K-M/LumenShift.git",
+      "localPath": "research/repos/LumenShift",
+      "workingTreeStatus": ""
+    },
+    {
+      "name": "Lunar",
+      "commit": "06950e25747159c81f501a5e4477374abb1d779a",
+      "committedAt": "2026-10-25T19:29:32+02:00",
+      "subject": "Update changelog for 6.11.3",
+      "origin": "https://github.com/alin23/Lunar.git",
+      "localPath": "research/repos/Lunar",
+      "workingTreeStatus": ""
+    },
+    {
+      "name": "MonitorControl",
+      "commit": "7cfe64500d19cbbcbf82121a91c826f658a403bd",
+      "committedAt": "2026-10-14T17:14:19+02:00",
+      "subject": "Add Persian (fa) translation (#1925)",
+      "origin": "https://github.com/MonitorControl/MonitorControl.git",
+      "localPath": "research/repos/MonitorControl",
+      "workingTreeStatus": ""
+    },
+    {
+      "name": "mac-utils",
+      "commit": "3e8688fdf7ba77da49a3da42252f5a9db6939296",
+      "committedAt": "2026-10-08T10:40:49+03:00",
+      "subject": "Fix crashes, edge cases and exit codes across the utilities",
+      "origin": "https://github.com/alin23/mac-utils.git",
+      "localPath": "research/repos/mac-utils",
+      "workingTreeStatus": ""
+    }
+  ]
+}

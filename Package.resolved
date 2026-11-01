@@ -1,0 +1,32 @@
+{
+  "originHash" : "34833f8250dacb7bf619b5dc11442a91ada98b3b24f68747595aeb7b8013b66b",
+  "pins" : [
+    {
+      "identity" : "mediakeytap",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/alin23/MediaKeyTap.git",
+      "state" : {
+        "revision" : "5b8ee686bc90d917cba4f029b47c2a8541a4f58d"
+      }
+    },
+    {
+      "identity" : "sunkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SunKit-Swift/SunKit.git",
+      "state" : {
+        "revision" : "a18a6f780770680f4f2ffe3488a1f3b335ec5ff6",
+        "version" : "2.8.2"
+      }
+    },
+    {
+      "identity" : "swift-atomics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-atomics",
+      "state" : {
+        "revision" : "0442cb5a3f98ab802acb777929fdb446bda11a34",
+        "version" : "1.3.1"
+      }
+    }
+  ],
+  "version" : 3
+}
