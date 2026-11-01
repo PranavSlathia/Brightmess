@@ -1,6 +1,6 @@
 # Brightness Relay 0.8.0 verification
 
-1 November 2026, M4 Mini, portrait LU28R55 over HDMI and Beyond TV; source is PRSNL (M2 Air). A monitor percentage is not a photometric measurement.
+1–2 November 2026, M4 Mini, portrait LU28R55 over HDMI and Beyond TV; source is PRSNL (M2 Air). A monitor percentage is not a photometric measurement.
 
 ## Implementation and scope
 
@@ -30,15 +30,22 @@ A key immediately following slider release previously stepped from the last hard
 
 The Mini's 0.7 receiver (PID 82840) used 13.13 CPU seconds over exactly 600 wall seconds, **2.19% of one core**. This is process CPU, not energy consumption. Do not infer Air CPU, latency, physical output or network-loss recovery from this number or from simulated tests.
 
-### Observed 0.8 receiver and remaining gates
+### Mini-only rollout checkpoint, 1 November 2026
 
 - Ten quiet minutes on 0.8 before the pending-slider/key correction: **0.19 CPU seconds / 600 seconds = 0.032% of one core**, versus 2.19% on 0.7. The old scheduled Air helper was still supplying the Mini. Hardware/software write counters did not advance during this window. The measurement is not a live-pair or battery benchmark.
 - Final corrected Mini executable installed and signature verified; its Mach-O UUID matched the final release executable, `1AE52A3C-B7FB-356A-9C10-13D99547D5F9`. The original validated 0.7 rollback backup remains available.
 - At handoff the Mini received Air 62%, mapped both displays to 68%, with both automatic. Source mode **Scheduled**, no live-session ID. Do not mark Air deployment complete based on a staged ZIP or a signed legacy reading.
-- Actual M2 live notification latency, warm/cool room changes, physical Samsung menu and visible TV response under 0.8, real sleep/wake and tailnet interruption still require the Air upgrade and desk observation. Only the first 0.7 Air CPU sample was supplied; no valid Air CPU comparison yet. Keyboard Accessibility approval for the final executable is also pending.
+- At this checkpoint the Air update, physical responsiveness check and keyboard approval were still pending. The following entries record their subsequent verification.
 
 ### Paired Air rollout verified, 2 November 2026
 
 The Air installer reported live session `6D430B24-50DF-4A20-B5A3-A2A438728146`. The Mini independently reported the same signed session, source mode/state `live`/`Live`, and an open lid. Air brightness was 62%; both displays were connected and on automatic, mapped to 68%. Samsung reported its last DDC setting and TV its software level. Ambient input was approximately 40 lux / 5413 K. Successive heartbeats advanced the receiver’s accepted-sample count from 14 to 15 with **zero hardware or software brightness writes** since receiver startup. This proves live delivery and idle deduplication, not physical luminance or key-to-screen latency.
 
-A clean relaunch of the unchanged Mini app rejoined the same Air session. The keyboard listener still reported missing Accessibility permission: macOS logged a stored `b7b98fc4…` (0.7) requirement against the installed `7c8cac79…` executable. No privacy settings were reset as part of verification. This permission is independent of Air sync. Air CPU results and the physical lighting, key, sleep and network checks have not yet been supplied.
+A clean relaunch of the unchanged Mini app rejoined the same Air session. At that point macOS still matched the keyboard permission against the old 0.7 code identity, rather than the installed 0.8 executable. Air sync continued independently.
+
+### Physical brightness-change check and keyboard approval, 2 November 2026
+
+- After the user reset this app's Accessibility approval and requested access again, the Mini reported **Keyboard brightness keys ready** and logged an active key listener. This verifies permission and listener startup, not a separate physical Magic Keyboard keypress.
+- The user changed brightness on the Air without **Sync Now** and reported that the displays responded almost immediately. The Mini logged DDC writes of 20% and later 100% to the Samsung, with intermediate levels as it ramped up. At the final reading the Air reported 100%, both displays were still automatic, and both mapped targets were 100%.
+- The Samsung value is the **last DDC command**, not hardware readback. The TV's 100% was the **applied software level**. The receiver counted 12 hardware and 62 software writes since restart; those are local display adjustments, not network packet counts.
+- Not measured in this desk test: precise key-to-screen latency, separate panel luminance, ten-minute Air CPU/battery use, or the live pair's behaviour across controlled lighting changes, sleep/wake and physical tailnet loss. The CPU comparison above is for the Mini receiver with the scheduled Air helper.

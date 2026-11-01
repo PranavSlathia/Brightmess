@@ -16,6 +16,14 @@ The relay reads ambient lux and colour temperature from the Air, then computes
 its own True-Tone-like correction for each screen. It does not copy Apple's
 complete internal True Tone transformation. Colour starts Off per display.
 
+**Verified on the two-Mac desk, 2 November 2026:** changing brightness on the
+M2 Air made the Mini's displays follow without **Sync Now**. The tester described
+the response as almost immediate. The receiver logged Samsung DDC settings down
+to 20% and back to 100%; the TV followed through software dimming. This was a
+physical responsiveness check, not a timed latency measurement. See the
+[0.8 verification record](research/IMPLEMENTATION-0.8.0.md) for test results,
+CPU measurements and checks that remain open.
+
 ## Current two-display behavior
 
 This machine has been probed per display rather than treating every DDC service
@@ -127,7 +135,7 @@ controls. Packets older than 30 seconds and repeated nonces are rejected.
 On the Mac mini:
 
 ```sh
-cd "/Users/pronav/Documents/BRIGHT NESS"
+# From the repository root:
 ./scripts/install-mini.sh
 ```
 
@@ -208,6 +216,18 @@ Accessibility switch is enabled but the menu still reports missing access after
 an update, remove the old Brightness Relay entry, add
 `~/Applications/Brightness Relay.app` again, and enable it. A valid, stable
 signing identity is needed to avoid this local-build reapproval step.
+
+If the entry is on but the app still reports missing access, reset **only this
+app's Accessibility approval** on the Mini and request it again:
+
+```sh
+tccutil reset Accessibility dev.pranav.BrightnessRelay &&
+  "$HOME/.local/bin/brightness-relay" enable-keys --host 127.0.0.1
+```
+
+Approve the installed Mini app, then check `brightness-relay status --host
+127.0.0.1` for **Keyboard brightness keys ready**. Keyboard permission is not
+required for the Air to send readings.
 
 Historical 0.7 integration evidence:
 [research/IMPLEMENTATION-0.7.0.md](research/IMPLEMENTATION-0.7.0.md).
