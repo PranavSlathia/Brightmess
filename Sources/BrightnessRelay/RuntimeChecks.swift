@@ -67,9 +67,15 @@ enum RuntimeChecks {
         defer { task.cancel() }
         func at(_ n: UInt16) -> Bool { coordinator.snapshot().allSatisfy { $0.brightness == n } }
         try await wait({at(50)}, "initial live sync")
+        let burstStart = ProcessInfo.processInfo.systemUptime
+        let preBurstWrites = driver.record.count
         sensors.level = 0.1; sensors.callback?()
         sensors.level = 0.25; sensors.callback?()
         sensors.level = 0.36; sensors.callback?()
+        try await wait({driver.record.count > preBurstWrites}, "first adjustment exceeded 1s", timeout: 1)
+        let firstWrite = driver.record[preBurstWrites].0 - burstStart
+        try expect(firstWrite < 1, "first adjustment late")
+        print(String(format: "First simulated hardware adjustment: %.0f ms", firstWrite*1000))
         try await wait({at(36)}, "burst lost final target")
         sensors.level = 0.76 // no callback: exercise the real two-second watchdog
         try await wait({at(76)}, "missed callback not recovered", timeout: 5)
@@ -80,6 +86,8 @@ enum RuntimeChecks {
         try expect(coordinator.snapshot().first{$0.id=="TV"}?.calibration.count == 0, "learned wrong panel")
         coordinator.adjustManualBrightness(direction: .down, fine: true)
         try await wait({coordinator.snapshot().allSatisfy{$0.calibration.count == 1}}, "key learning")
+        try expect(coordinator.snapshot().first{$0.id=="Samsung"}?.brightness == 42,
+                   "key immediately after slider stepped from the old hardware value")
         coordinator.editCurve(displayID: "TV", reset: false)
         try expect(coordinator.snapshot().first{$0.id=="TV"}?.calibration.count == 0, "undo")
         let frozen = driver.record.count
@@ -114,7 +122,33 @@ enum RuntimeChecks {
         } catch HTTPRelayError.rejected(409, _) {}
         st = try await status()
         try expect(st["airBrightnessPercent"] as? Int == 50, "reordered sample changed freshness/state")
-        print("Loopback checks passed: scheduled/live, burst, lost callback, learn/undo, bounded fade, idle, sleep/lid, Sync Now, wire ordering.")
+        // Stop the actual loopback listener. The Air must keep only the newest
+        // reading during connection refusal, even while its retries back off.
+        server.stopSimulationListener()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        sensors.level = 0.05; sensors.callback?()
+        try await Task.sleep(nanoseconds: 450_000_000)
+        sensors.level = 0.9; sensors.callback?()
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+        let restored = try RelayHTTPServer(port: port, authenticator: auth, displayCoordinator: coordinator,
+            curve: try BrightnessCurve(minimum: 0, maximum: 100), loopbackOnly: true)
+        try await restored.start()
+        defer { restored.stopSimulationListener() }
+        try await wait({coordinator.snapshot().first{$0.id=="TV"}?.brightness == 90}, "reconnect lost latest sample", timeout: 8)
+        st = try await status()
+        try expect(st["airBrightnessPercent"] as? Int == 90, "offline backlog replayed")
+        let beforeEdit = coordinator.snapshot().first{$0.id=="TV"}!.calibration.count
+        coordinator.beginSlider("TV")
+        sensors.level = 0.7; sensors.callback?()
+        try await wait({coordinator.snapshot().first{$0.id=="TV"}?.mappedTarget == 70}, "new Air target during gesture")
+        coordinator.setManualBrightness(11, displayID: "TV", final: true)
+        let tv = coordinator.snapshot().first{$0.id=="TV"}!
+        try expect(tv.calibration.count == beforeEdit && tv.learningNote?.hasPrefix("Not learned") == true,
+                   "moving Air became permanent preference")
+        coordinator.setFollowsAutomatic(false, displayID: "TV")
+        coordinator.setManualBrightness(23, displayID: "TV", final: true)
+        try expect(coordinator.snapshot().first{$0.id=="TV"}?.followsAutomatic == false, "explicit manual changed to Auto")
+        print("Loopback checks passed: scheduled/live, burst, watchdog, learn/undo, bounded fade, idle, sleep/lid, Sync Now, ordering, transport loss/recovery, unstable gesture, explicit manual.")
     }
 }
 #endif

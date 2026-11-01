@@ -276,7 +276,10 @@ final class DisplayCoordinator: @unchecked Sendable {
         queue.async { [self] in
             for i in self.states.indices where self.states[i].connectionState.isConnected {
                 let id = self.states[i].id
-                let from = self.gestures[id]?.level ?? self.states[i].brightness ?? 50
+                // A user's just-released slider may be waiting for the DDC
+                // rate limit. Step from that intent, not the previous backlight.
+                let manualGoal = self.ramps[id].flatMap { $0.duration == 0 ? $0.goal : nil }
+                let from = self.gestures[id]?.level ?? manualGoal ?? self.states[i].brightness ?? 50
                 self.beginOrUpdate(BrightnessStepPolicy.next(from: from, direction: direction, fine: fine), index: i)
                 self.keyEnds[id]?.cancel()
                 let work = DispatchWorkItem { [weak self] in self?.finishGesture(id) }

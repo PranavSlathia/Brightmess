@@ -11,10 +11,12 @@ Display preferences are keyed by the existing stable identities. Automatic displ
 ## Software verification
 
 - Native release build succeeded; 21 executable core groups passed.
-- Debug-only loopback runner uses the real publisher, real authenticated HTTP client/server, isolated preferences, fake sensors and fake display drivers. It passed legacy-to-live handover, event burst/final level, missed-event watchdog, per-display slider and keyboard learning, undo, four-per-second hardware limit, no writes after settling, explicit sleep and lid status, wake/Sync Now, and out-of-order rejection.
+- Debug-only loopback runner uses the real publisher, real authenticated HTTP client/server, isolated preferences, fake sensors and fake display drivers. It passed legacy-to-live handover, event burst/final level, missed-event watchdog, per-display slider and keyboard learning, undo, four-per-second hardware limit, no writes after settling, explicit sleep and lid status, wake/Sync Now, and out-of-order rejection. A further test interrupted the real loopback TCP listener, queued changes while connections failed, and verified recovery at the newest target after the listener returned. It also rejected learning during a changing Air level and preserved explicitly manual mode.
 - Core tests supply deterministic monotonic times for send coalescing, single-flight, offline exponential backoff, hold deadlines, retargeting and legacy migration. Simulations are not physical display or battery measurements.
 - Swift Testing suite **not run**: this CLT lacks the `Testing` module. Shell scripts passed syntax checks; the private ZIP passed archive integrity and helper signature verification.
 - Reproduce: `./scripts/swiftpm.sh build -c release`, `.build/release/brightness-self-test`, and `BR_TEST_LOG="$TMPDIR/relay-sim.log" ./scripts/swiftpm.sh run brightness-relay simulation-check`.
+
+A key immediately following slider release previously stepped from the last hardware write instead of the just-requested manual level. The regression failed on 43 → fine-step down, then passed at 42 after using the pending manual goal. First simulated hardware adjustment in the final loopback run: 251 ms. Neither a fake driver nor local loopback establishes M2/Tailscale latency.
 
 ## Mini rollout
 

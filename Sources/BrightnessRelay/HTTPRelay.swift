@@ -224,8 +224,12 @@ final class RelayHTTPServer {
             throw HTTPRelayError.invalidPort
         }
         let parameters = NWParameters.tcp
-        if loopbackOnly { parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: networkPort) }
-        self.listener = try NWListener(using: parameters, on: networkPort)
+        if loopbackOnly {
+            parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: networkPort)
+            self.listener = try NWListener(using: parameters)
+        } else {
+            self.listener = try NWListener(using: parameters, on: networkPort)
+        }
         self.authenticator = authenticator
         self.displayCoordinator = displayCoordinator
         self.curve = curve
@@ -235,6 +239,16 @@ final class RelayHTTPServer {
     }
 
     var boundPort: UInt16? { listener.port?.rawValue }
+
+    #if DEBUG
+    func stopSimulationListener() {
+        queue.sync {
+            listener.cancel()
+            for c in pullWaiters.values { c.cancel() }
+            pullWaiters.removeAll(); fallbackTimer?.cancel(); fallbackTimer = nil
+        }
+    }
+    #endif
 
     func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

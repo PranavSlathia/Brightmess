@@ -1,5 +1,6 @@
 #!/bin/zsh
 set -euo pipefail
+umask 077
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 ./scripts/swiftpm.sh build -c release --product brightness-relay
@@ -16,6 +17,9 @@ install -m 644 NOTICE "$BUNDLE/THIRD-PARTY-NOTICES.txt"
 install -m 644 .build/checkouts/SunKit/LICENSE "$BUNDLE/SunKit-LICENSE.txt"
 install -m 644 .build/checkouts/swift-atomics/LICENSE.txt "$BUNDLE/Swift-Atomics-LICENSE.txt"
 zsh -n "$BUNDLE/Install on Air.command"
-ditto -c -k --keepParent "$BUNDLE" "$HOME/Downloads/Brightness-Relay-Air-0.8.0.zip"
-chmod 600 "$HOME/Downloads/Brightness-Relay-Air-0.8.0.zip"
+ZSTAGE=$(mktemp -d "$HOME/Downloads/.brightness-zip.XXXXXX")
+trap 'rm -rf "$ZSTAGE"' EXIT
+ditto -c -k --keepParent "$BUNDLE" "$ZSTAGE/Air.zip"
+chmod 600 "$ZSTAGE/Air.zip"
+mv -f "$ZSTAGE/Air.zip" "$HOME/Downloads/Brightness-Relay-Air-0.8.0.zip"
 echo "$HOME/Downloads/Brightness-Relay-Air-0.8.0.zip"
