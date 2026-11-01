@@ -29,3 +29,10 @@ A key immediately following slider release previously stepped from the last hard
 ## Measurement boundary
 
 The Mini's 0.7 receiver (PID 82840) used 13.13 CPU seconds over exactly 600 wall seconds, **2.19% of one core**. This is process CPU, not energy consumption. Do not infer Air CPU, latency, physical output or network-loss recovery from this number or from simulated tests.
+
+### Observed 0.8 receiver and remaining gates
+
+- Ten quiet minutes on 0.8 before the pending-slider/key correction: **0.19 CPU seconds / 600 seconds = 0.032% of one core**, versus 2.19% on 0.7. The old scheduled Air helper was still supplying the Mini. Hardware/software write counters did not advance during this window. The measurement is not a live-pair or battery benchmark.
+- Final corrected Mini executable installed and signature verified; its Mach-O UUID matched the final release executable, `1AE52A3C-B7FB-356A-9C10-13D99547D5F9`. The original validated 0.7 rollback backup remains available.
+- At handoff the Mini received Air 62%, mapped both displays to 68%, with both automatic. Source mode **Scheduled**, no live-session ID. Do not mark Air deployment complete based on a staged ZIP or a signed legacy reading.
+- Actual M2 live notification latency, warm/cool room changes, physical Samsung menu and visible TV response under 0.8, real sleep/wake and tailnet interruption still require the Air upgrade and desk observation. Only the first 0.7 Air CPU sample was supplied; no valid Air CPU comparison yet. Keyboard Accessibility approval for the final executable is also pending.
