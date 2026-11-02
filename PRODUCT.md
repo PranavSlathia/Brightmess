@@ -1,4 +1,4 @@
-# Brightness Relay
+# BRIGHTMESS
 
 ## Register
 product

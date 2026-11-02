@@ -1,9 +1,10 @@
-# Brightness Relay
+# BRIGHTMESS
 
-Brightness Relay is a small native macOS menu-bar controller for a Mac mini
+BRIGHTMESS is a small native macOS menu-bar controller for a Mac mini
 with multiple external displays. It gives each display its own slider,
 automatic/manual mode, real disconnect/reconnect, keyboard brightness keys,
-per-screen calibration and independent adaptive white balance.
+per-screen calibration and independent adaptive white balance. It also moves
+Mac windows between screens and sends input commands to a paired Android TV.
 
 Automatic mode follows the final brightness chosen by a nearby MacBook Air —
 including macOS ambient-light decisions and your manual corrections. The Air
@@ -35,7 +36,7 @@ as one monitor:
 | `Beyond TV` 43-inch 4K | EDID `63185128-…` | Per-screen software dimming; DDC read/write rejected | `Software live` | Disconnect/reconnect |
 
 The distinction is deliberate. A cached command is never presented as a live
-hardware read. The TV's software value is live because Brightness Relay owns
+hardware read. The TV's software value is live because BRIGHTMESS owns
 the shade opacity. The Samsung's hardware backlight target is labeled **Last
 set** because the monitor does not provide a checksum-valid readback on this
 connection.
@@ -48,9 +49,24 @@ does not promise electrical power-off.
 
 ## Menu-bar controls
 
-Click the paired-screen menu-bar icon to open **Light desk** (Mini interface build 9). The portrait Samsung and wide TV each have an illustration whose picture tracks that screen’s applied brightness level. Click the artwork or **Details** for exact readings and advanced controls. The Air helper does not need an update for this interface change.
+Click the paired-screen menu-bar icon to open **Light desk** (Mini version 0.9, build 10). The portrait Samsung and wide TV each have an illustration whose picture tracks that screen’s applied brightness level. Click the artwork or **Details** for exact readings and advanced controls. The Air helper does not need an update.
 
 ![Light desk with isolated example displays](docs/light-desk.png)
+
+**Move windows:** Open Light desk on the destination monitor. **Bring [app] here**
+moves the window you were using; **Choose window…** lists other eligible windows
+by app, title and screen. This works without changing the TV input. In **Desk
+details → Move window**, record an optional shortcut to send the focused window
+to the other display. Allow Accessibility for the Mini app. True full-screen
+windows must exit full screen first. Screen Recording is not needed.
+
+**Switch TV inputs:** On the TV card choose **Pair TV**, then the name of your
+TCL, and type the six-character code into BRIGHTMESS on the Mini. Allow Local
+Network discovery if macOS asks. **PS5** requests HDMI 1; **Mac mini**, HDMI 3;
+**Smart TV**, the TV home screen. A sent command does not prove the physical
+input changed. Nothing is queued while offline. Use **Set up → Open TV inputs**
+if direct buttons do nothing. For verified TCL input IDs, see the
+[setup and hardware checklist](research/LIGHT-DESK-0.9.md).
 
 The panel provides:
 
@@ -97,7 +113,7 @@ a hardware measurement: Samsung shows its last DDC command and TV its applied
 software level. Optional Samsung extra dimming applies only at hardware zero.
 
 Keyboard keys adjust both connected displays. Plain keys use 6% steps; Option+Shift uses 1%. The menu's Enable button requests
-Accessibility permission. Approve Brightness Relay in macOS settings.
+Accessibility permission. Approve BRIGHTMESS in macOS settings.
 
 Reused components include TrueTone's colour/calibration maths, LuxCurve filtering
 and MediaKeyTap. MonitorControl, mac-utils, LumenShift, ddc-mirror and LunarSensor
@@ -143,7 +159,7 @@ On the Mac mini:
 ./scripts/install-mini.sh
 ```
 
-The installer builds and installs `~/Applications/Brightness Relay.app`, then
+The installer builds and installs `~/Applications/BRIGHTMESS.app`, then
 restarts its LaunchAgent. It preserves the existing relay token and MacBook
 pairing.
 
@@ -193,7 +209,7 @@ The current CLT SwiftBuild engine has duplicate platform specifications.
 ./scripts/swiftpm.sh run brightness-self-test
 ```
 
-The self-test runs 21 executable groups covering brightness/colour calibration,
+The self-test covers TV protocol framing and pairing, window movement, brightness/colour calibration,
 sensor validity/expiry, backwards compatibility, authenticated and replay-safe
 packets, keyboard steps and disconnect policy. The Swift Testing suite remains
 under Tests/; the current Command Line Tools lacks that testing module.
@@ -217,8 +233,8 @@ No Gatekeeper settings are disabled.
 
 Ad-hoc builds have a new code identity when the executable changes. If the
 Accessibility switch is enabled but the menu still reports missing access after
-an update, remove the old Brightness Relay entry, add
-`~/Applications/Brightness Relay.app` again, and enable it. A valid, stable
+an update, remove the old entry, add
+`~/Applications/BRIGHTMESS.app`, and enable it. A valid, stable
 signing identity is needed to avoid this local-build reapproval step.
 
 If the entry is on but the app still reports missing access, reset **only this

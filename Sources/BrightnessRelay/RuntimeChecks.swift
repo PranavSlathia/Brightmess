@@ -45,6 +45,7 @@ enum RuntimeChecks {
         }
         let suite = "dev.pranav.relay.test." + UUID().uuidString
         let prefs = UserDefaults(suiteName: suite)!
+        try DeskWindows.checkShortcutConflict(prefs)
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
         defer { prefs.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: tmp) }
         let driver = Displays()

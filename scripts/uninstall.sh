@@ -1,7 +1,8 @@
 #!/bin/zsh
 set -euo pipefail
 
-APP="$HOME/Applications/Brightness Relay.app"
+APP="$HOME/Applications/BRIGHTMESS.app"
+[[ -d "$APP" ]] || APP="$HOME/Applications/Brightness Relay.app"
 APP_BIN="$APP/Contents/MacOS/brightness-relay"
 
 for label in receiver source; do

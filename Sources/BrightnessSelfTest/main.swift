@@ -1,5 +1,6 @@
 import BrightnessCore
 import Foundation
+import CoreGraphics
 
 enum SelfTestFailure: Error, CustomStringConvertible {
     case failed(String)
@@ -18,12 +19,76 @@ struct BrightnessSelfTest {
                       checkPullReplayProtection, checkSolarCurve, checkBrightnessKeySteps, checkSafeDisconnectPolicy,
                       checkAmbientValidity, checkBackwardCompatibleEnvelope, checkWhitePoint, checkDimRoomWhitePoint,
                       checkCalibration, checkMedian, checkAmbientReplay, checkLiveOrder, checkLearnedCurve,
-                      checkPublisherClock, checkHoldPolicy, checkFade, checkMigration]
+                      checkPublisherClock, checkHoldPolicy, checkFade, checkMigration, checkWindowFit, checkTVFrames,
+                      checkTVSession, checkWindowSelection]
         for check in checks { try check() }; print("\(checks.count) core checks passed.")
     }
 
     private static func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
         guard condition() else { throw SelfTestFailure.failed(message) }
+    }
+
+    private static func checkWindowFit() throws {
+        let wide = CGRect(x: 100, y: -30, width: 1920, height: 1080)
+        let tall = CGRect(x: -900, y: 25, width: 900, height: 1530)
+        try require(WindowPlacement.fit(wide, from: wide, to: tall) == tall, "maximized window must fill portrait destination")
+        let normal = WindowPlacement.fit(CGRect(x: 250,y: 20,width: 500,height: 300), from: wide, to: tall)
+        try require(tall.contains(normal) && normal.size == CGSize(width: 500,height: 300), "normal windows retain size")
+    }
+
+    private static func checkTVFrames() throws {
+        var stream = TVFrames()
+        let packet = Data(repeating: 0x23, count: 300)
+        let wire = TVWire.frame(packet) + TVWire.frame(Data([1]))
+        let first = try stream.push(Data(wire.prefix(1)))
+        let rest = try stream.push(Data(wire.dropFirst()))
+        try require(first.isEmpty && rest == [packet,Data([1])], "TCP boundaries changed TV commands")
+    }
+
+    private static func checkTVSession() throws {
+        typealias W = TVWire
+        var pair = TVHandshake(pairing:true)
+        let proof = Data(repeating:0xb3,count:32)
+        var fakeReplies = [W.pair(11,Data()),W.pair(20,Data()),W.pair(31,Data())]
+        for reply in fakeReplies { _ = try pair.receive(reply) }
+        try require(pair.step == .code,"pairing must wait for physical code")
+        _ = try pair.prove(proof)
+        var bad = pair
+        do { _ = try bad.receive(W.pair(41,W.bytes(1,Data([1])))); throw SelfTestFailure.failed("wrong proof accepted") } catch is TVError {}
+        _ = try pair.receive(W.pair(41,W.bytes(1,proof)))
+        try require(pair.step == .verified,"valid TV rejected")
+        let peer = Data("TV A".utf8), pin = TVTrust.fingerprint(peer)
+        try require(!TVTrust.accepts(Data("TV B".utf8),pairing:false,pinned:pin) &&
+            TVTrust.accepts(peer,pairing:false,pinned:pin) && !TVTrust.accepts(peer,pairing:false,pinned:nil),
+            "TV identity must follow the public key across address changes, not the IP")
+        var remote = TVHandshake(pairing:false)
+        do { _ = try remote.command(code:243); throw SelfTestFailure.failed("offline command queued") } catch is TVError {}
+        fakeReplies = [W.bytes(1,W.number(1,547)),W.bytes(2,Data()),W.bytes(40,W.number(1,1))]
+        for reply in fakeReplies { _ = try remote.receive(reply) }
+        let direct = try remote.command(code:245), chooser = try remote.command(code:178)
+        try require(direct == Data([0x52,5,8,245,1,16,3]) && chooser == W.key(178),"wrong HDMI commands")
+        let link = try remote.command(code:245,inputID:"com.fixture/.Pass/HW27")
+        let fields = try W.Fields(link), url = try W.Fields(fields.b[90] ?? Data()).b[1]
+        try require(url == Data("content://android.media.tv/passthrough/com.fixture%2F.Pass%2FHW27".utf8),"fallback must use verified ID")
+        do { _ = try W.link("https://bad"); throw SelfTestFailure.failed("arbitrary URL accepted") } catch is TVError {}
+    }
+
+    private static func checkWindowSelection() throws {
+        let r = CGRect(x:0,y:0,width:400,height:500), dest = CGRect(x:-900,y:10,width:900,height:1500)
+        var selected: UInt32? = 1, writes = 0, full = false
+        func move(trusted: Bool = true, online: Bool = true) throws {
+            try WindowPlacement.move(original:1,destination:2,trusted:trusted,usable:{ _ in online ? dest : nil },
+                read:{ selected.map { .init(screen:$0,rect:r,usable:r,fullScreen:full,movable:true) } },
+                write:{ frame in writes += 1; selected = 2; return frame == dest })
+        }
+        // A second window can become focused without replacing the captured window.
+        try move(); try require(writes == 1 && selected == 2,"selected window was not moved")
+        for (original,permit,online,fs) in [(2 as UInt32?,true,true,false),(nil,true,true,false),
+                (1,false,true,false),(1,true,false,false),(1,true,true,true),(3,true,true,false)] {
+            selected = original; full = fs
+            do { try move(trusted:permit,online:online); throw SelfTestFailure.failed("stale/unsafe window moved") } catch is TVError {}
+        }
+        try require(writes == 1,"unsafe case wrote to a window")
     }
 
     private static func checkCurveEndpoints() throws {

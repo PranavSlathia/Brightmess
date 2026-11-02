@@ -40,7 +40,7 @@ import AppKit
             }
             return true
         }
-        image.isTemplate = true; image.accessibilityDescription = "Brightness Relay"
+        image.isTemplate = true; image.accessibilityDescription = "BRIGHTMESS"
         return image
     }
 }

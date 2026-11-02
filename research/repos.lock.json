@@ -2,6 +2,17 @@
   "assessedOn": "2026-11-01",
   "repositories": [
     {
+      "name": "universal-tv-remote-macos",
+      "commit": "f7e651b89f6a31f377291d95c41a1590de26de79",
+      "committedAt": "2026-10-11T23:07:20+05:30",
+      "subject": "Fix collapse redraws, restore native panel appearance, and reflow prose",
+      "origin": "https://github.com/devasheeshG/universal-tv-remote-macos.git",
+      "localPath": "research/repos/universal-tv-remote-macos",
+      "workingTreeStatus": "",
+      "assessedOn": "2026-11-02",
+      "license": "MIT; vendored AndroidTVRemoteControl MIT, copyright 2023 odyshewroman"
+    },
+    {
       "name": "TrueTone",
       "commit": "4bf513544163c230483ace6c40bd88e4760f3993",
       "committedAt": "2026-09-26T11:54:35+03:00",
