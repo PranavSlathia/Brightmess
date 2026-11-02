@@ -48,6 +48,7 @@ let package = Package(
                 .product(name: "MediaKeyTap", package: "MediaKeyTap"),
                 .product(name: "SunKit", package: "SunKit"),
             ],
+            resources: [.copy("Resources/FireflyMenu.png")],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),

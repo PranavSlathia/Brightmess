@@ -51,7 +51,7 @@ struct BrightnessPopoverView: View {
     }
     private var header: some View {
         HStack(spacing:7) {
-            Image(nsImage:DeskMark.image(.linked)).renderingMode(.template).foregroundStyle(DeckPaint.leaf).accessibilityHidden(true)
+            Image(nsImage:DeskMark.image(.linked)).renderingMode(.original).accessibilityHidden(true)
             Text("BRIGHTMESS").font(.system(size:12,weight:.bold)).tracking(0.7)
             Spacer(minLength:2)
             Text(model.deskStatus=="Live" ? "Air live":model.deskStatus)

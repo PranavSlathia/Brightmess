@@ -108,7 +108,7 @@ Native fixture captures: [Samsung destination · light](docs/source-deck.png) an
 
 ## Colors
 
-The Desk Plan palette gives the three jobs different grounds. Forest and cream stay fixed across appearances; pear labels the three source keys and leaf picks out the header mark. On the lower deck, the adaptive shelf, ground, ink, muted text, button face, outline and accent switch with macOS appearance. Use the adaptive accent for native sliders, toggles and actions.
+The Desk Plan palette gives the three jobs different grounds. Forest and cream stay fixed across appearances; pear labels the three source keys. The glass firefly brings emerald, pear and amber into the header and menu bar. On the lower deck, the adaptive shelf, ground, ink, muted text, button face, outline and accent switch with macOS appearance. Use the adaptive accent for native sliders, toggles and actions.
 
 **The Command Rule.** A source key sends a request. Its colour does not identify the picture currently on the TV.
 
@@ -130,7 +130,8 @@ Use compact, gently rounded keys and smaller outlined window tiles. The large sy
 
 ## Components
 
-- **Status strip and menu-bar mark.** Show BRIGHTMESS, Air state and Sync now. The 23 × 17 template draws up to two monitors in desktop order, scaled by their actual aspect ratios; a dash, sun or attention cue distinguishes mode. The header uses the linked mark as an imprint, with the Air state in text.
+- **Status strip and menu-bar mark.** Show BRIGHTMESS, Air state and Sync now. The 23 × 17 firefly uses full-colour artwork without an enclosing tile. A sun badge means solar fallback; a triangular attention badge means the receiver needs attention. Keep its idle pose static and name the state for accessibility. The header uses the resting firefly next to the Air state in text; the display controls below still show actual desktop geometry.
+- **App icon.** The same firefly sits on a forest glass tile in Finder and System Settings. The wide emerald wing and upright pear wing are a desk metaphor, not a live diagram. Use the [layered icon source](Assets/Brand/BRIGHTMESS.icon) and its [native-size proof](docs/brand-icons.png).
 - **Source keys.** Show PS5, Mac mini and Smart TV side by side. Name the route beneath the action: HDMI 1, HDMI 3, Home or Input chooser. A chooser action gains an ellipsis. Keep pairing, setup and command feedback in the source band; disable keys until the remote is ready.
 - **Window shelf.** “To” names the opening display; “From” names the other connected displays. Each tile pairs a 24-point app icon (or fallback) with one eligible window. Keep “Move focused window” separate: it toggles the captured window to the other display, not necessarily to the shelf destination. Show a reason when the shelf is empty, and offer Accessibility access when required.
 - **Display levels.** Each device owns its slider, step buttons, Follow Air switch, details and connection control. Distinguish last set, hardware readback, software dimming, unavailable and disconnected. Protect the last active display with a disabled “Last screen” action. Details, shortcuts and diagnostics expand inline.

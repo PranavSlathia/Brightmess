@@ -283,6 +283,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         markMode=mode
         let image = DeskMark.image(mode)
         if statusItem?.button?.image !== image { statusItem?.button?.image = image }
+        statusItem?.button?.toolTip = mode.label
+        statusItem?.button?.setAccessibilityLabel(mode.label)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

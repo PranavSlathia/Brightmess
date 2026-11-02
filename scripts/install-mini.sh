@@ -12,15 +12,28 @@ fi
 PLIST="$HOME/Library/LaunchAgents/dev.pranav.brightness-relay.receiver.plist"
 TOKEN="$HOME/.config/brightness-relay/token"
 SUPPORT="$HOME/Library/Application Support/Brightness Relay/Backups"
+STAGE_ONLY=0
+if (( $# )); then
+  [[ $# == 1 && "$1" == --stage-only ]] || { print -u2 'usage: install-mini.sh [--stage-only]'; exit 2; }
+  STAGE_ONLY=1
+fi
 cd "$ROOT"
 if [[ "${BR_SKIP_BUILD:-0}" != 1 ]]; then
   "$ROOT/scripts/swiftpm.sh" build -c release
 fi
-mkdir -p "$HOME/Applications" "$HOME/.local/bin" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-STAGE="$(mktemp -d "$HOME/Applications/.brightness-update.XXXXXX")"
+if (( STAGE_ONLY )); then
+  STAGE="$(mktemp -d "$ROOT/.build/mini-preview.XXXXXX")"
+else
+  mkdir -p "$HOME/Applications" "$HOME/.local/bin" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+  STAGE="$(mktemp -d "$HOME/Applications/.brightness-update.XXXXXX")"
+fi
 STAGED_APP="$STAGE/BRIGHTMESS.app"
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
 install -m 755 .build/release/brightness-relay "$STAGED_APP/Contents/MacOS/brightness-relay"
+for asset in BRIGHTMESS.icns Assets.car; do
+  install -m 644 "Assets/Brand/Compiled/$asset" "$STAGED_APP/Contents/Resources/$asset"
+done
+install -m 644 "Sources/BrightnessRelay/Resources/FireflyMenu.png" "$STAGED_APP/Contents/Resources/FireflyMenu.png"
 install -m 644 NOTICE "$STAGED_APP/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 install -m 644 .build/checkouts/SunKit/LICENSE "$STAGED_APP/Contents/Resources/SunKit-LICENSE.txt"
 install -m 644 .build/checkouts/swift-atomics/LICENSE.txt "$STAGED_APP/Contents/Resources/Swift-Atomics-LICENSE.txt"
@@ -31,8 +44,10 @@ plutil -insert CFBundleIdentifier -string dev.pranav.BrightnessRelay "$INFO"
 plutil -insert CFBundleName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundleDisplayName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
-VERSION=0.10.0
-BUILD=12
+plutil -insert CFBundleIconFile -string BRIGHTMESS "$INFO"
+plutil -insert CFBundleIconName -string BRIGHTMESS "$INFO"
+VERSION=0.10.1
+BUILD=13
 plutil -insert CFBundleShortVersionString -string "$VERSION" "$INFO"
 plutil -insert CFBundleVersion -string "$BUILD" "$INFO"
 plutil -insert NSLocalNetworkUsageDescription -string "Find your selected Android TV and send input commands on your local network." "$INFO"
@@ -45,6 +60,10 @@ plutil -insert NSHighResolutionCapable -bool true "$INFO"
 SIGNING_IDENTITY="${BR_SIGNING_IDENTITY:--}"
 codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$STAGED_APP"
 codesign --verify --strict "$STAGED_APP"
+if (( STAGE_ONLY )); then
+  print "$STAGED_APP"
+  exit 0
+fi
 mkdir -p "$SUPPORT"
 BACKUP="$(mktemp -d "$SUPPORT/$(date +%Y%m%d-%H%M%S).XXXXXX")"
 [[ ! -f "$HOME/.local/bin/brightness-relay" ]] || cp -p "$HOME/.local/bin/brightness-relay" "$BACKUP/cli"

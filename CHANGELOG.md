@@ -1,5 +1,11 @@
 # BRIGHTMESS release history
 
+## 0.10.1 · Glass Firefly (Mini build 13)
+
+- New layered macOS app icon and legacy icon fallback for Finder and System Settings.
+- Full-colour firefly in the menu bar and Source Deck header. Solar and attention
+  retain distinct shape cues and accessible labels. No Air update or new permissions.
+
 ## 0.10.0 · Source Deck on the Mini (build 12)
 
 - Green light/dark layout: three direct TV source actions, a destination-aware
