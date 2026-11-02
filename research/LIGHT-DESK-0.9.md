@@ -4,6 +4,12 @@ The Mini owns both features. A TV input is *not* a macOS display connection.
 Changing inputs must not call the brightness, display-disconnect, or window APIs.
 Moving a window must not send a TV command. The Air protocol is unchanged.
 
+**Desk result:** the user confirmed one-click **Smart TV → Home** and
+**Mac mini → HDMI 3** on the iFFALCON TCL G07. See the
+[exact input ID and settings](#verified-return-to-hdmi-3-over-wi-fi).
+The PS5 port ID was found but that switch was not tested. For general
+installation, permissions and rollback, see the [README](../README.md#install).
+
 ## What we reused
 
 The ignored checkout of [Universal TV Remote for macOS](https://github.com/devasheeshG/universal-tv-remote-macos/tree/f7e651b89f6a31f377291d95c41a1590de26de79)
@@ -25,7 +31,7 @@ assigned until recorded. It never uses the Magic Keyboard brightness keys.
 
 1. Open Light desk on the Samsung. Choose **Pair TV**, select the TV you
    recognize, and enter the code into BRIGHTMESS. A key change requires new
-   pairing. Only **Command sent** means a command was transmitted, not that
+   pairing. **Command sent** means a command was transmitted, not that
    the panel changed inputs.
 2. With the TV and consoles available, check **Smart TV** (home), **PS5**
    (HDMI 1), and **Mac mini** (HDMI 3) against the TV's own picture/OSD.
@@ -76,8 +82,10 @@ Release build, 25 executable core checks and the debug loopback simulation
 passed. Those include fragmented/coalesced TV messages, a fake TV exchange,
 wrong proofs/keys, input-link encoding, stale window selection and shortcut
 collision. The Swift Testing target was attempted; this CLT lacks the
-`Testing` module. Window movement on real apps requires Accessibility approval
-for the installed binary.
+`Testing` module. The live picker listed a Zen window on the TV with the
+Samsung as its destination. A physical move and a full shortcut round trip
+were not confirmed in this run. **Keyboard brightness keys ready** is the
+listener's status, not proof of a fresh physical keypress on build 10.
 
 ### Separate HDMI-CEC test (not part of build 10)
 
@@ -112,7 +120,10 @@ query other TVs rather than assuming their IDs match.
 | HDMI 1 · PS5 | `com.tcl.tvinput/.passthroughinput.TvPassThroughService/HW1413744128` | ID discovered only. The PS5 was off; its button was not reconfigured or tested with this link. |
 
 For HDMI 3, **Set up → Configure HDMI fallback** now contains the full ID,
-with **Mac mini uses input chooser** off. The existing paired Android TV
+with **Mac mini uses input chooser** off. To reproduce the mapping on this
+desk, enter the HDMI 3 ID above, leave the PS5 field and switch unchanged,
+and click **Save mapping**. From Home, click **Mac mini** (no ellipsis) and
+check for the Mac desktop without using the TV remote. The existing paired Android TV
 Remote connection sent the passthrough URI; no native MagiConnect switch
 command, power event, ADB, or HDMI-CEC was involved. The list already marked
 HDMI 3 selected *before* the test, so that flag is not proof of which picture

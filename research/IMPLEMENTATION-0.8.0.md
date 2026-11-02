@@ -1,5 +1,9 @@
 # Brightness Relay 0.8.0 verification
 
+Historical record for the live Air helper and Mini builds through 9. The
+[0.9 Mini record](LIGHT-DESK-0.9.md) covers the renamed app, TV inputs and
+window controls; an existing live 0.8 Air remains compatible.
+
 1–2 November 2026, M4 Mini, portrait LU28R55 over HDMI and Beyond TV; source is PRSNL (M2 Air). A monitor percentage is not a photometric measurement.
 
 ## Implementation and scope

@@ -5,6 +5,10 @@ The TV remote's Android Remote v2 pairing, messaging and commands adapt the
 protocol used by Universal TV Remote for macOS (devasheeshG, project MIT)
 and its vendored AndroidTVRemoteControl. No other TV brands are bundled.
 
+The MagiConnect protocol notes and MacTV informed separate hardware tests.
+Neither project is bundled or required at runtime. See research/LIGHT-DESK-0.9.md
+for the upstream references and the path actually used on the TCL.
+
 AndroidTVRemoteControl — MIT License
 Copyright (c) 2023 odyshewroman
 
