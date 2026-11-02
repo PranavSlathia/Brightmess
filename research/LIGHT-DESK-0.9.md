@@ -64,7 +64,10 @@ were set to request the TV input chooser; **PS5…** and **Mac mini…** now sen
 the same chooser command, not a discrete port change. Pairing survived the
 app relaunch. A Home → Mac mini test on the installed app reported **Command
 sent · Smart TV** followed by **Command sent · Open TV inputs**. Neither
-message is active-input readback. After the exact app was re-added, macOS
+message is active-input readback. The user observed Home but **no source
+list** on this TCL. The chooser is therefore not a working fallback on this
+unit. Use the physical remote's Input button unless another route is verified.
+After the exact app was re-added, macOS
 granted Accessibility and the Mini reported **Keyboard brightness keys ready**.
 
 Release build, 25 executable core checks and the debug loopback simulation
@@ -73,3 +76,15 @@ wrong proofs/keys, input-link encoding, stale window selection and shortcut
 collision. The Swift Testing target was attempted; this CLT lacks the
 `Testing` module. Window movement on real apps requires Accessibility approval
 for the installed binary.
+
+### Separate HDMI-CEC test (not part of build 10)
+
+[MacTV](https://github.com/pengchujin/MacTV/blob/b0d7db0b3b83454a1cf8e39d692a9a76f9024139/Sources/CECCore/CECProtocol.swift)
+provided a reference for switching back to the Mac over HDMI. On this desk
+the TCL's EDID reports physical address **3.0.0.0** and its matching HDMI
+transport supports enabled CEC; the Samsung's transport does not. With user
+approval a one-off probe sent **one** Active Source frame (`4F 82 30 00`)
+from the Mini's already assigned playback address. No power command, PS5
+input request, retry, TV setting change, or app installation was involved.
+The local controller finished the transmit request; that is not proof of
+what the television displayed.
