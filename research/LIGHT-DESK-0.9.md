@@ -57,9 +57,15 @@ LaunchAgent were restored during an actual rollback; the corrected migration
 then started build 10 with the old arguments except for the app path. A fresh
 signed live reading arrived from the unchanged Air. The TCL completed physical
 code pairing and the Mini reached “remote ready.” The user confirmed that
-Smart TV opened Home, but that at least one standard HDMI key was ignored.
-Pairing survived replacement of the app. Do not count either HDMI shortcut as
-verified until its port has been observed on this set.
+Smart TV opened Home. On this iFFALCON TCL, **both** direct HDMI keys were
+ignored. The TV offered no secure wireless-debugging pairing, so no ADB
+connection was opened and no passthrough IDs were guessed. Both port buttons
+were set to request the TV input chooser; **PS5…** and **Mac mini…** now send
+the same chooser command, not a discrete port change. Pairing survived the
+app relaunch. A Home → Mac mini test on the installed app reported **Command
+sent · Smart TV** followed by **Command sent · Open TV inputs**. Neither
+message is active-input readback. After the exact app was re-added, macOS
+granted Accessibility and the Mini reported **Keyboard brightness keys ready**.
 
 Release build, 25 executable core checks and the debug loopback simulation
 passed. Those include fragmented/coalesced TV messages, a fake TV exchange,
