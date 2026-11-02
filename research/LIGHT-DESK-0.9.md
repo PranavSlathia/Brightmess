@@ -31,15 +31,18 @@ assigned until recorded. It never uses the Magic Keyboard brightness keys.
    (HDMI 1), and **Mac mini** (HDMI 3) against the TV's own picture/OSD.
    These are source requests, not power controls. If selecting HDMI makes the
    Mac lose its display, the paired TV control remains on the Samsung.
-3. If direct HDMI keys are ignored, use **Set up → Open TV inputs**. To learn a
-   one-click input instead, authorize temporary debugging *on that TV*
+3. If direct HDMI keys are ignored, use the TV's own input IDs. For the
+   G07, see the [verified Wi-Fi route](#verified-return-to-hdmi-3-over-wi-fi)
+   below; **Open TV inputs** did not work. On other models the chooser can
+   be tested, but don't offer it as working until observed. A separate
+   diagnostic option, if needed and available, is temporary debugging *on that TV*
    using a trusted network; do not expose ADB to the office LAN if the device
    does not authenticate clients. With an **already authorized** ADB transport,
    run `zsh scripts/tcl-input-ids.sh TV-IP:PORT`. Compare IDs/properties as
    you change ports using the physical remote. Never copy HW numbers from
    another model. Enter the two verified IDs under **Configure HDMI fallback**.
    Disconnect the ADB session, disable debugging on the TV, then retest both
-   buttons. If the TV also rejects links, set that port to **uses input chooser**.
+   buttons. Only set a port to **uses input chooser** if that TV actually opens it.
    [TCL passthrough example](https://github.com/falghamdi125/Google-TV-Remote-for-Windows)
    · [BeyondTV field notes](https://github.com/Gathin23/cleanyourtv/blob/main/docs/devices/tcl-beyondtv-rt2851.md#hdmi-inputs).
 4. While the TV shows the PS5, bring a normal Mac browser window from the TV
@@ -60,13 +63,12 @@ code pairing and the Mini reached “remote ready.” The user confirmed that
 Smart TV opened Home. On this iFFALCON TCL, **both** direct HDMI keys were
 ignored. The TV offered no secure wireless-debugging pairing, so no ADB
 connection was opened and no passthrough IDs were guessed. Both port buttons
-were set to request the TV input chooser; **PS5…** and **Mac mini…** now send
-the same chooser command, not a discrete port change. Pairing survived the
+were initially set to request the same chooser command. Pairing survived the
 app relaunch. A Home → Mac mini test on the installed app reported **Command
 sent · Smart TV** followed by **Command sent · Open TV inputs**. Neither
 message is active-input readback. The user observed Home but **no source
 list** on this TCL. The chooser is therefore not a working fallback on this
-unit. Use the physical remote's Input button unless another route is verified.
+unit. HDMI 3 was subsequently verified using the input link below.
 After the exact app was re-added, macOS
 granted Accessibility and the Mini reported **Keyboard brightness keys ready**.
 
@@ -91,3 +93,31 @@ that the TCL stayed on Smart TV Home: **HDMI 3 did not activate**. Do not use
 this announcement as a verified “return to Mac” action on this desk. This
 result does not establish whether the TV-side CEC setting or another
 firmware behavior caused it.
+
+### Verified return to HDMI 3 over Wi-Fi
+
+Two protocols played different roles. The TCL G07 answered a targeted
+MagiConnect/T-Cast UDP discovery on 6537 (version 14), identified itself
+on TCP 6553, and returned its recent-input list to read-only query `269>>1`.
+This was an external research probe, not a new listener or dependency in the
+Mini app. Do not treat this vendor discovery channel as proof of device
+identity on a shared LAN. Confirm the intended TV before saving a mapping.
+
+The response included the following IDs. These values belong to this set;
+query other TVs rather than assuming their IDs match.
+
+| Physical port | Input ID reported by this TV | Tested outcome |
+| --- | --- | --- |
+| HDMI 3 · Mac mini | `com.tcl.tvinput/.passthroughinput.TvPassThroughService/HW1413744640` | The installed **Mac mini** button sent the mapped input link once. From Smart TV Home, the user saw the Mac desktop appear without using the physical remote. |
+| HDMI 1 · PS5 | `com.tcl.tvinput/.passthroughinput.TvPassThroughService/HW1413744128` | ID discovered only. The PS5 was off; its button was not reconfigured or tested with this link. |
+
+For HDMI 3, **Set up → Configure HDMI fallback** now contains the full ID,
+with **Mac mini uses input chooser** off. The existing paired Android TV
+Remote connection sent the passthrough URI; no native MagiConnect switch
+command, power event, ADB, or HDMI-CEC was involved. The list already marked
+HDMI 3 selected *before* the test, so that flag is not proof of which picture
+is visible. Physical observation was the acceptance check.
+
+References: [MagiConnect wire protocol](https://github.com/DusKing1/ha-tcl-tv/blob/main/docs/protocol.md),
+[Android passthrough URI API](https://developer.android.com/reference/android/media/tv/TvContract#buildChannelUriForPassthroughInput(java.lang.String)),
+and [a remote implementation of TCL input links](https://github.com/falghamdi125/Google-TV-Remote-for-Windows/blob/main/gtvremote/inputs.py).

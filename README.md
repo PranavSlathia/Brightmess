@@ -64,9 +64,13 @@ windows must exit full screen first. Screen Recording is not needed.
 TCL, and type the six-character code into BRIGHTMESS on the Mini. Allow Local
 Network discovery if macOS asks. **PS5** requests HDMI 1; **Mac mini**, HDMI 3;
 **Smart TV**, the TV home screen. A sent command does not prove the physical
-input changed. Nothing is queued while offline. Use **Set up → Open TV inputs**
-if direct buttons do nothing. For verified TCL input IDs, see the
-[setup and hardware checklist](research/LIGHT-DESK-0.9.md).
+input changed. Nothing is queued while offline. On our 43-inch iFFALCON TCL
+G07, **Smart TV** opened Home and **Mac mini** returned directly to the Mac
+desktop on HDMI 3. The generic input chooser did not work on this TV.
+We obtained the port ID over Wi-Fi from the TV's MagiConnect service and
+saved it in build 10's existing input mapping; no ADB or TV-side app was
+needed. This discovery is not yet automatic in BRIGHTMESS. See the
+[tested mapping and setup notes](research/LIGHT-DESK-0.9.md#verified-return-to-hdmi-3-over-wi-fi).
 
 The panel provides:
 
