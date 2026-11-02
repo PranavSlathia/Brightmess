@@ -1,13 +1,13 @@
 {
-  "fill": { "automatic-gradient": "extended-srgb:0.07843,0.25490,0.21961,1.00000" },
+  "fill": { "automatic-gradient": "extended-srgb:0.14902,0.34510,0.26275,1.00000" },
   "groups": [
     {
-      "name": "Glass firefly",
+      "name": "Out of Register",
       "layers": [
         {
-          "name": "Emerald and pear wings, amber lantern",
-          "image-name": "Firefly.png",
-          "position": { "scale": 0.78, "translation-in-points": [0, 7] }
+          "name": "Two displays, shared stripe and stray pixel",
+          "image-name": "OutOfRegister.png",
+          "position": { "scale": 0.95, "translation-in-points": [0, 0] }
         }
       ],
       "shadow": { "kind": "neutral", "opacity": 0.35 },

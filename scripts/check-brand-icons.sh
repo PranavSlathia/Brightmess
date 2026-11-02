@@ -9,7 +9,7 @@ trap 'rm -rf "$tmp"' EXIT
 app="$tmp/BrandProof.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 swiftc -parse-as-library Sources/BrightnessRelay/DeskMark.swift scripts/check-brand-icons.swift -o "$app/Contents/MacOS/BrandProof"
-cp Assets/Brand/Compiled/{Assets.car,BRIGHTMESS.icns} Sources/BrightnessRelay/Resources/FireflyMenu.png "$app/Contents/Resources/"
+cp Assets/Brand/Compiled/{Assets.car,BRIGHTMESS.icns} "$app/Contents/Resources/"
 info="$app/Contents/Info.plist"
 plutil -create xml1 "$info"
 plutil -insert CFBundlePackageType -string APPL "$info"

@@ -35,6 +35,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     private var didStart = false
     private var terminationSignal: DispatchSourceSignal?
     private var markMode:DeskMark.Mode = .linked
+    private let markCue=DeskMarkCue()
 
     init(server: RelayHTTPServer) {
         self.server = server
@@ -254,6 +255,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     func popoverDidClose(_ notification: Notification) {
+        markCue.reset();updateMarkImage()
         model.setVisible(false); model.shortcuts.cancelRecording(); model.windows.close(); model.tv.close()
     }
     private func openPopover(clickedScreen:NSScreen?=nil) {
@@ -271,6 +273,11 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         model.refreshDisplays()
         model.setVisible(true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        if popover.isShown {
+            markCue.open(reduced:{NSWorkspace.shared.accessibilityDisplayShouldReduceMotion}) { [weak self] in
+                self?.updateMarkImage()
+            }
+        }
         NSApp.activate(ignoringOtherApps: true)
         RelayLog.write("Brightness controller popover opened")
     }
@@ -281,13 +288,18 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
 
     private func setStatusIcon(_ mode: DeskMark.Mode) {
         markMode=mode
-        let image = DeskMark.image(mode)
-        if statusItem?.button?.image !== image { statusItem?.button?.image = image }
+        updateMarkImage()
         statusItem?.button?.toolTip = mode.label
         statusItem?.button?.setAccessibilityLabel(mode.label)
     }
 
+    private func updateMarkImage() {
+        let image=DeskMark.image(markMode,frame:markCue.frame)
+        if statusItem?.button?.image !== image { statusItem?.button?.image=image }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        markCue.reset()
         model.shortcuts.stop(); model.windows.stop(); model.tv.shutdown()
         model.restoreColors()
         keyController.stop()

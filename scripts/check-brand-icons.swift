@@ -17,20 +17,49 @@ import AppKit
             guard let c=rep.colorAt(x:x,y:y)?.usingColorSpace(.sRGB) else{continue}
             if c.alphaComponent<0.1 {result.2+=1;continue}
             if c.greenComponent>c.redComponent+0.1 && c.greenComponent>c.blueComponent+0.10 {result.0+=1}
-            if c.redComponent>0.58 && c.redComponent>c.blueComponent+0.35 && c.greenComponent>0.25 {result.1+=1}
+            if c.redComponent>0.58 && c.redComponent>c.greenComponent+0.12 && c.redComponent>c.blueComponent+0.35 {result.1+=1}
         }}
         return result
     }
-    static func main() throws {
+    // Find a shared lime row with exactly two runs and the centroid of the stray
+    // amber pixel beyond the right bezel. Do not assume bitmap row orientation.
+    static func geometry(_ rep:NSBitmapImageRep,scale:Int)->(Int,Double) {
+        var bestRow = -1, bestCount = 0, pixelY=0, pixelCount=0
+        for y in 0..<rep.pixelsHigh {
+            var runs=0,n=0,lit=false
+            for x in 0..<rep.pixelsWide {
+                guard let c=rep.colorAt(x:x,y:y)?.usingColorSpace(.sRGB) else{continue}
+                let signal=c.alphaComponent>0.5 && c.greenComponent>0.87 && c.redComponent>0.55 && c.blueComponent<0.48
+                if signal {n+=1;if !lit{runs+=1}};lit=signal
+                if x>=20*scale && c.alphaComponent>0.5 && c.redComponent>0.67 && c.greenComponent<c.redComponent-0.12 && c.blueComponent<0.5 {pixelY+=y;pixelCount+=1}
+            }
+            if runs==2 && n>bestCount { bestRow=y;bestCount=n }
+        }
+        precondition(bestCount>=9*scale && pixelCount>0,"Missing shared stripe or stray pixel")
+        return (bestRow,Double(pixelY)/Double(pixelCount))
+    }
+    static func checkCue() async throws {
+        let cue=DeskMarkCue();var frames=[DeskMark.Frame]()
+        cue.open(reduced:{true}){frames.append(cue.frame)}
+        precondition(frames == [.aligned],"Reduce Motion must present only the final frame")
+        frames=[];cue.open(reduced:{false}){frames.append(cue.frame)}
+        let limit=ContinuousClock.now + .seconds(2)
+        while frames.last != .aligned && ContinuousClock.now<limit {try await Task.sleep(for:.milliseconds(12))}
+        precondition(frames.first == .start && frames.last == .aligned && frames.count<=11,"Opening did not settle")
+        let n=frames.count;try await Task.sleep(for:.milliseconds(55));precondition(n==frames.count)
+        frames=[];cue.open(reduced:{false}){frames.append(cue.frame)};cue.reset()
+        try await Task.sleep(for:.milliseconds(80))
+        precondition(cue.frame == .resting && frames == [.start],"A closed menu continued animating")
+    }
+    static func main() async throws {
         let output=URL(fileURLWithPath:CommandLine.arguments[1])
         let url=URL(fileURLWithPath:CommandLine.arguments[2])
         guard let b=Bundle(url:url), b.object(forInfoDictionaryKey:"CFBundleIconName") as? String=="BRIGHTMESS",
               b.url(forResource:"BRIGHTMESS",withExtension:"icns") != nil,
-              b.url(forResource:"Assets",withExtension:"car") != nil,
-              b.url(forResource:"FireflyMenu",withExtension:"png") != nil else {fatalError("Missing bundle icon declarations or resources")}
+              b.url(forResource:"Assets",withExtension:"car") != nil else {fatalError("Missing bundle icon declarations or resources")}
         let fileIcon=NSWorkspace.shared.icon(forFile:url.path)
         let iconPixels=pixels(bitmap(.init(width:128,height:128)){fileIcon.draw(in:$0)})
-        precondition(iconPixels.green>400 && iconPixels.warm>60,"Icon Services returned generic or unrecognizable artwork")
+        precondition(iconPixels.green>400 && iconPixels.warm>=1,"Icon Services returned generic or unrecognizable artwork")
         for scale in [1,2] {
             var states=Set<Data>()
             for mode in DeskMark.Mode.allCases {
@@ -38,26 +67,24 @@ import AppKit
                 precondition(!image.isTemplate && image.size==DeskMark.size && image === DeskMark.image(mode))
                 let rep=bitmap(image.size,scale:scale){image.draw(in:$0)}
                 let count=pixels(rep)
-                precondition(count.green>10 && count.warm>4 && count.clear>16)
+                precondition(count.green>10 && count.warm>0 && count.clear>16)
+                _=geometry(rep,scale:scale)
                 states.insert(rep.representation(using:.png,properties:[:])!)
             }
             precondition(states.count==3,"Status modes indistinguishable")
         }
-        // Independent reference for the resting mark: ensures the packaged
-        // optical artwork was used, not a missing-resource fallback.
-        let file=NSImage(contentsOf:Bundle.main.url(forResource:"FireflyMenu",withExtension:"png")!)!
-        let f=min(22/file.size.width,17/file.size.height),art=NSSize(width:file.size.width*f,height:file.size.height*f)
-        let expected=bitmap(DeskMark.size,scale:2){r in file.draw(in:NSRect(x:r.midX-art.width/2,y:r.midY-art.height/2,width:art.width,height:art.height))}
-        let actual=bitmap(DeskMark.size,scale:2){DeskMark.image(.linked).draw(in:$0)}
-        let a=pixels(actual),e=pixels(expected)
-        precondition(abs(a.green-e.green)<32 && abs(a.warm-e.warm)<30,"Resting icon is not the optical master")
+        let rest=geometry(bitmap(DeskMark.size,scale:2){DeskMark.image(.linked).draw(in:$0)},scale:2)
+        let start=geometry(bitmap(DeskMark.size,scale:2){DeskMark.image(.linked,frame:.start).draw(in:$0)},scale:2)
+        let settle=geometry(bitmap(DeskMark.size,scale:2){DeskMark.image(.linked,frame:.aligned).draw(in:$0)},scale:2)
+        precondition(rest.0 == settle.0 && abs(start.0-settle.0)>=2 && abs(rest.1-settle.1)>2,"Incorrect opening positions")
+        try await checkCue()
         let foreground=NSColor(srgbRed:0.08,green:0.20,blue:0.15,alpha:1)
         func label(_ s:String,_ x:CGFloat,_ y:CGFloat,_ size:CGFloat,_ weight:NSFont.Weight = .medium) {
             (s as NSString).draw(at:NSPoint(x:x,y:y),withAttributes:[.font:NSFont.systemFont(ofSize:size,weight:weight),.foregroundColor:foreground])
         }
         let sheet=bitmap(NSSize(width:518,height:194),scale:2){rect in
             NSColor(srgbRed:0.94,green:0.95,blue:0.90,alpha:1).setFill();rect.fill()
-            label("BRIGHTMESS",16,160,16,.bold);label("Glass Firefly",16,144,11)
+            label("BRIGHTMESS",16,160,16,.bold);label("Out of Register",16,144,11)
             fileIcon.draw(in:NSRect(x:16,y:5,width:140,height:140))
             label("Menu bar · 23 × 17 pt",174,147,13,.semibold)
             for (i,mode) in DeskMark.Mode.allCases.enumerated(){
@@ -71,6 +98,6 @@ import AppKit
             }
         }
         try sheet.representation(using:.png,properties:[:])!.write(to:output,options:.atomic)
-        print("Icon Services artwork and all three full-colour states passed at 1× and 2×. Proof: "+output.path)
+        print("Icon Services, all three 1×/2× marks, stripe alignment, one-shot motion and Reduce Motion passed. Proof: "+output.path)
     }
 }

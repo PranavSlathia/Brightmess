@@ -18,15 +18,15 @@ not verified.
 
 ## Menu-bar controls
 
-Click the colourful glass firefly in the menu bar to open **Source Deck** (Mini 0.10.1,
-build 13). TV sources come first, then windows from your other display, then
+Click the two glass screens in the menu bar to open **Source Deck** (Mini 0.10.2,
+build 14). TV sources come first, then windows from your other display, then
 independent display controls. The small display shapes use macOS desktop
 proportions; they do not claim a panel's physical size or native resolution.
 Click the shape or **Details** for readings and calibration. No Air update is needed.
 
-The [Glass Firefly](Assets/Brand/README.md) is a layered app icon and a separate
-full-colour menu mark. [See the mark at actual size](docs/brand-icons-1x.png),
-including the solar and attention badges on light and dark bars.
+[Out of Register](Assets/Brand/README.md) pairs a wide TV with a portrait monitor:
+one shared lime stripe, one amber pixel out of place. [See the actual-size menu
+mark](docs/brand-icons-1x.png), including solar and attention on light and dark bars.
 
 ![Native Source Deck with three TV sources and individually selectable windows; synthetic data](docs/source-deck.png)
 
@@ -267,9 +267,9 @@ sensor validity/expiry, backwards compatibility, authenticated and replay-safe
 packets, keyboard steps and disconnect policy. The Swift Testing suite remains
 under Tests/; select a full Xcode toolchain when Command Line Tools lacks Testing.
 
-The Mini's bundle version is **0.10.1**, while the compatible receiver API
+The Mini's bundle version is **0.10.2**, while the compatible receiver API
 still reports **0.8.0**. In `status`, check `controls.uiBuild` for the Mini
-build (`13`), and `sourceMode` for the Air's mode. Examples:
+build (`14`), and `sourceMode` for the Air's mode. Examples:
 
 ```sh
 brightness-relay status --host 127.0.0.1

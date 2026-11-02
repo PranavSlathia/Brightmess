@@ -289,7 +289,7 @@
       "name": "Status strip",
       "kind": "custom",
       "refersTo": "status-strip",
-      "description": "Fixed native status band with the original-colour Glass Firefly imprint.",
+      "description": "Fixed native status band with the original-colour Out of Register imprint.",
       "html": "<div class=\"ds-strip\"><strong>BRIGHTMESS</strong><span>Air live</span><button>Sync now</button></div>",
       "css": ".ds-strip{background:#153d2f;color:#f4f9e9;height:36px;padding:0 16px;display:flex;align-items:center;gap:7px;font:500 11px system-ui}.ds-strip strong{margin-right:auto;font-size:12px;letter-spacing:.7px}.ds-strip button{background:none;color:inherit;border:0;font:inherit}.ds-strip button:hover{text-decoration:underline}.ds-strip button:focus-visible{outline:2px solid currentColor}.ds-strip button:active{opacity:.7}"
     },

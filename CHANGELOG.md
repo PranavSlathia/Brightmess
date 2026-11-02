@@ -1,6 +1,13 @@
 # BRIGHTMESS release history
 
-## 0.10.1 · Glass Firefly (Mini build 13)
+## 0.10.2 · Out of Register (Mini build 14)
+
+- Matching native app and menu-bar icons: a wide TV and upright monitor share
+  a lime stripe, with one amber pixel outside the bezel.
+- The menu-opening cue plays once, respects Reduce Motion, and never switches
+  TV inputs or modifies brightness. The Air helper is unchanged.
+
+## 0.10.1 · Glass Firefly (staged, superseded)
 
 - New layered macOS app icon and legacy icon fallback for Finder and System Settings.
 - Full-colour firefly in the menu bar and Source Deck header. Solar and attention

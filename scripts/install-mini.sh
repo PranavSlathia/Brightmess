@@ -33,7 +33,6 @@ install -m 755 .build/release/brightness-relay "$STAGED_APP/Contents/MacOS/brigh
 for asset in BRIGHTMESS.icns Assets.car; do
   install -m 644 "Assets/Brand/Compiled/$asset" "$STAGED_APP/Contents/Resources/$asset"
 done
-install -m 644 "Sources/BrightnessRelay/Resources/FireflyMenu.png" "$STAGED_APP/Contents/Resources/FireflyMenu.png"
 install -m 644 NOTICE "$STAGED_APP/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 install -m 644 .build/checkouts/SunKit/LICENSE "$STAGED_APP/Contents/Resources/SunKit-LICENSE.txt"
 install -m 644 .build/checkouts/swift-atomics/LICENSE.txt "$STAGED_APP/Contents/Resources/Swift-Atomics-LICENSE.txt"
@@ -46,8 +45,8 @@ plutil -insert CFBundleDisplayName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
 plutil -insert CFBundleIconFile -string BRIGHTMESS "$INFO"
 plutil -insert CFBundleIconName -string BRIGHTMESS "$INFO"
-VERSION=0.10.1
-BUILD=13
+VERSION=0.10.2
+BUILD=14
 plutil -insert CFBundleShortVersionString -string "$VERSION" "$INFO"
 plutil -insert CFBundleVersion -string "$BUILD" "$INFO"
 plutil -insert NSLocalNetworkUsageDescription -string "Find your selected Android TV and send input commands on your local network." "$INFO"

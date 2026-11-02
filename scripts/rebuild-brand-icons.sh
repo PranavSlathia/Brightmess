@@ -14,4 +14,3 @@ for name in Assets.car BRIGHTMESS.icns; do
   [[ -s "$tmp/$name" ]]
   install -m 644 "$tmp/$name" "Assets/Brand/Compiled/$name"
 done
-sips --resampleWidth 96 Assets/Brand/MenuFirefly-master.png --out Sources/BrightnessRelay/Resources/FireflyMenu.png

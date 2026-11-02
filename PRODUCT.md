@@ -51,7 +51,8 @@ other-screen windows second, and independent display controls third. Use the
 green Desk Plan palette in both appearances. Represent displays using their
 oriented macOS desktop bounds, not a stock TV/portrait illustration. The
 menu-bar mark must remain legible at 23 × 17 points. Use the original-colour
-Glass Firefly there and on the app bundle; do not template-tint the mascot.
+Out of Register mark there: the hardware supplies its character, with a shared
+stripe of light and one amber pixel out of place.
 
 ## Principles
 
