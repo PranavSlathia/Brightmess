@@ -5,36 +5,76 @@ struct DeskWindowsView: View {
     @ObservedObject var shortcuts: DeskShortcuts
     let requestAccess: () -> Void
     var body: some View {
-        VStack(alignment:.leading,spacing:6) {
+        VStack(alignment:.leading,spacing:5) {
             HStack {
-                Label("Windows",systemImage:"macwindow.on.rectangle").font(.headline)
+                Text("Bring a window here").font(.system(size:15,weight:.bold))
                 Spacer()
-                if !windows.trusted { Button("Enable Accessibility",action:requestAccess) }
-                else {
-                    Button(windows.showing ? "Close list" : "Choose window…") { windows.list() }
-                }
+                Text("To "+windows.destinationName).lineLimit(1).font(.caption)
             }
-            if windows.trusted {
+            if !windows.sourceNames.isEmpty {
+                Text("From "+windows.sourceNames).font(.caption).foregroundStyle(DeckPaint.muted).lineLimit(1)
+            }
+            if windows.choices.isEmpty {
                 HStack {
-                    Button { windows.toggle(captured:true) } label: {
-                        Label("Move to other screen",systemImage:shortcuts.symbol(.move))
-                    }.disabled(windows.focus == nil).help(shortcuts.binding(.move)?.label ?? "Move the focused window to the other display")
-                    if let w = windows.focus, windows.canBring {
-                        Button("Bring "+w.app+" here") { windows.bring(w) }
-                    }
-                }
+                    Text(windows.hint).font(.caption).foregroundStyle(DeckPaint.muted)
+                    if !windows.trusted {Button("Enable Accessibility",action:requestAccess)}
+                }.controlSize(.small).frame(minHeight:38)
+            } else {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing:5) {
+                        ForEach(windows.choices) { w in
+                            DeskWindowTile(window:w,icon:windows.icon(for:w),destination:windows.destinationName,bring:{windows.bring(w)})
+                        }
+                    }.padding(.vertical,1)
+                }.frame(height:41)
             }
+            HStack {
+                Button {windows.toggle(captured:true)} label:{
+                    HStack(spacing:4) {
+                        Label("Move focused window",systemImage:shortcuts.symbol(.move))
+                        if let key=shortcuts.activeBinding(.move){ Text(key.label).font(.system(size:10)) }
+                    }
+                }.disabled(windows.focus==nil || windows.sourceNames.isEmpty)
+                .help(shortcuts.activeBinding(.move)?.label ?? "Move the captured window to the other display")
+                Spacer()
+                Button(windows.showing ? "Close list":"All windows…"){windows.list()}
+                    .buttonStyle(.borderless).disabled(!windows.trusted || windows.sourceNames.isEmpty)
+            }.controlSize(.small).font(.system(size:11,weight:.medium))
             if windows.showing {
-                if windows.choices.isEmpty { Text("No eligible windows on another screen.").font(.caption) }
                 ForEach(windows.choices) { w in
                     Button { windows.bring(w) } label: {
                         Text(windows.label(w)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
-                    }.help("Move to "+windows.destinationName)
+                    }.controlSize(.small).help("Bring this window to "+windows.destinationName)
                 }
             }
-            if !windows.notice.isEmpty { Text(windows.notice).font(.caption) }
-        }.controlSize(.small).padding(10)
-        .background(.secondary.opacity(0.08),in:RoundedRectangle(cornerRadius:8))
+            if !windows.notice.isEmpty {Text(windows.notice).font(.caption)}
+        }.padding(.horizontal,16).padding(.vertical,9)
+        .frame(maxWidth:.infinity,minHeight:137,alignment:.leading)
+        .foregroundStyle(DeckPaint.ink).background(DeckPaint.shelf)
+    }
+}
+
+private struct DeskWindowTile: View {
+    let window:DeskWindow,icon:NSImage?,destination:String,bring:()->Void
+    private var actionName:String{"Bring \(window.app), \(window.displayTitle) to \(destination)"}
+    @ViewBuilder private var appIcon:some View {
+        if let icon { Image(nsImage:icon).resizable().frame(width:24,height:24) }
+        else { Image(systemName:"macwindow").frame(width:24,height:24) }
+    }
+    private var tile:some View {
+        HStack(spacing:5){
+            appIcon
+            VStack(alignment:.leading,spacing:2){
+                Text(verbatim:window.app).font(Font.system(size:11.5,weight:.semibold))
+                Text(verbatim:window.displayTitle).font(.system(size:10.5)).foregroundStyle(DeckPaint.muted)
+            }.lineLimit(1)
+            Spacer(minLength:0)
+        }.padding(.horizontal,6).frame(width:135,height:37)
+        .background(DeckPaint.button,in:RoundedRectangle(cornerRadius:6))
+        .overlay(RoundedRectangle(cornerRadius:6).strokeBorder(DeckPaint.rule,lineWidth:1))
+    }
+    var body:some View {
+        Button(action:bring){tile}.buttonStyle(.plain).accessibilityLabel(Text(actionName)).help(actionName)
     }
 }
 
@@ -97,21 +137,20 @@ struct TVStrip: View {
     let display: String
     @StateObject private var form = TVForm()
     var body: some View {
-        VStack(alignment:.leading,spacing:6) {
+        VStack(alignment:.leading,spacing:8) {
             HStack {
-                Label("TV input",systemImage:"tv").font(.headline)
+                Text("TV source").font(.system(size:27,weight:.bold)).tracking(-0.9)
                 Spacer()
+                if remote.paired != nil || remote.fixture { Text("TV paired").font(.caption) }
                 if remote.paired != nil && !remote.ready && !remote.busy { Button("Reconnect") { remote.reconnect() } }
-                if !remote.fixture {
-                    Button(form.setup ? "Close setup" : (remote.paired == nil ? "Pair TV" : "Set up")) {
+                    Button(form.setup ? "Close setup" : (remote.paired == nil && !remote.fixture ? "Pair TV" : "Set up")) {
                         form.setup.toggle(); form.mapping = false; form.code = ""
-                    }
-                }
+                    }.buttonStyle(.plain).padding(4).overlay(RoundedRectangle(cornerRadius:5).strokeBorder(DeckPaint.cream.opacity(0.55)))
             }
             HStack {
                 source(.ps5); source(.mac); source(.home)
             }
-            Text(remote.notice).font(.caption).foregroundStyle(.secondary)
+            Text(remote.fixture ? "Remote ready":remote.notice).font(.caption).foregroundStyle(DeckPaint.cream)
             if form.setup {
                 if remote.wantsCode {
                     HStack {
@@ -139,13 +178,30 @@ struct TVStrip: View {
                     }
                 }
             }
-        }.padding(.horizontal,12).padding(.bottom,10).controlSize(.small)
+        }.controlSize(.small).padding(.horizontal,16).padding(.vertical,9)
+        .frame(maxWidth:.infinity,alignment:.leading).foregroundStyle(DeckPaint.cream).background(DeckPaint.forest)
     }
     private func submit() { remote.verify(form.code); form.code = "" }
     private func source(_ a: DeskAction) -> some View {
         let picker = remote.usesPicker(a)
+        let route = picker ? "Input chooser" : (a == .ps5 ? "HDMI 1" : a == .mac ? "HDMI 3":"Home")
         return Button { remote.activate(a) } label: {
-            Label(a.name+(picker ? "…" : ""),systemImage:shortcuts.symbol(a))
-        }.disabled(!remote.ready).help([picker ? "Open TV input chooser" : a.name,shortcuts.binding(a)?.label].compactMap{$0}.joined(separator:" · "))
+            VStack(alignment:.leading,spacing:2) {
+                HStack(alignment:.top) {
+                    Text(shortcuts.activeBinding(a)?.label ?? "").font(.system(size:10,weight:.semibold))
+                    Spacer(minLength:0)
+                }
+                Spacer(minLength:0)
+                Text(a.name+(picker ? "…" : "")).font(.system(size:19,weight:.bold)).tracking(-0.4)
+                Text(route).font(.system(size:11,weight:.medium))
+            }.padding(9).frame(maxWidth:.infinity,alignment:.leading).frame(height:99)
+            .background(alignment:.topTrailing){
+                Image(systemName:shortcuts.symbol(a)).resizable().scaledToFit().frame(width:61,height:43)
+                    .rotationEffect(.degrees(-9)).offset(x:5,y:-3).opacity(0.64).accessibilityHidden(true)
+            }.foregroundStyle(DeckPaint.forest).background(DeckPaint.pear,in:RoundedRectangle(cornerRadius:8))
+            .clipShape(RoundedRectangle(cornerRadius:8))
+        }.buttonStyle(.plain).disabled(!remote.ready)
+        .accessibilityLabel("Send "+a.name+" · "+route)
+        .help([picker ? "Open TV input chooser" : a.name,shortcuts.activeBinding(a)?.label].compactMap{$0}.joined(separator:" · "))
     }
 }

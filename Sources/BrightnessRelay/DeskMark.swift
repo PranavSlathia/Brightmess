@@ -1,46 +1,47 @@
 import AppKit
 
-/// One vector template at menu-bar scale. The asymmetrical screens identify
-/// the app; the small sky motif conveys normal, fallback, or attention state.
+/// A template, not a status light: miniature display bounds in desktop order.
 @MainActor enum DeskMark {
-    enum Mode: CaseIterable { case linked, solar, attention }
-    private static let images = Dictionary(uniqueKeysWithValues: Mode.allCases.map { ($0, draw($0)) })
-
-    static func image(_ mode: Mode) -> NSImage { images[mode]! }
-
-    private static func draw(_ mode: Mode) -> NSImage {
-        let image = NSImage(size: NSSize(width: 23, height: 17), flipped: true) { _ in
-            NSColor.black.setStroke(); NSColor.black.setFill()
-            func line(_ a: NSPoint, _ b: NSPoint, _ width: CGFloat = 1.45) {
-                let p = NSBezierPath(); p.lineWidth = width; p.lineCapStyle = .round
-                p.move(to: a); p.line(to: b); p.stroke()
+    enum Mode: CaseIterable,Hashable { case linked,solar,attention }
+    private struct Key:Hashable { let mode:Mode;let aspects:[Int] }
+    private static var cache=[Key:NSImage]()
+    static func image(_ mode:Mode)->NSImage {
+        let ratios=NSScreen.screens.sorted{$0.frame.minX<$1.frame.minX}.prefix(2).map{
+            Int((100*$0.frame.width/max(1,$0.frame.height)).rounded())
+        }
+        let key=Key(mode:mode,aspects:ratios)
+        if let saved=cache[key]{return saved}
+        if cache.count>24{cache.removeAll()}
+        let image=NSImage(size:NSSize(width:23,height:17),flipped:true){_ in
+            NSColor.black.setStroke();NSColor.black.setFill()
+            func line(_ x:CGFloat,_ y:CGFloat,_ ex:CGFloat,_ ey:CGFloat,_ width:CGFloat=1.35){
+                let p=NSBezierPath();p.lineWidth=width;p.lineCapStyle = .round
+                p.move(to:.init(x:x,y:y));p.line(to:.init(x:ex,y:ey));p.stroke()
             }
-            func panel(_ rect: NSRect) {
-                let p = NSBezierPath(roundedRect: rect, xRadius: 1.05, yRadius: 1.05)
-                p.lineWidth = 1.55; p.stroke()
+            let aspects=ratios.isEmpty ? [100]:ratios
+            let widths=aspects.map{min(13.0,max(4,10.5*CGFloat($0)/100))}
+            let fit=min(1,19.5/(widths.reduce(0,+))),gap:CGFloat=2.5
+            var x=(23-(widths.reduce(0,+)*fit+CGFloat(aspects.count-1)*gap))/2
+            var skyX:CGFloat=11.5, widest:CGFloat=0
+            for (i,a) in aspects.enumerated(){
+                let w=widths[i]*fit,h=min(10.5,w*100/CGFloat(max(1,a))),y=13-h
+                let p=NSBezierPath(roundedRect:.init(x:x,y:y,width:w,height:h),xRadius:1.0,yRadius:1.0)
+                p.lineWidth=1.45;p.stroke()
+                line(x+w*0.3,15.2,x+w*0.7,15.2)
+                if w>widest {widest=w;skyX=x+w/2}
+                x+=w+gap
             }
-            panel(NSRect(x: 1.3, y: 2.8, width: 6.5, height: 10.3))
-            line(.init(x: 4.55,y: 13.5), .init(x: 4.55,y: 15.5))
-            line(.init(x: 2.65,y: 15.55), .init(x: 6.45,y: 15.55))
-            panel(NSRect(x: 10, y: 6.0, width: 11.6, height: 7.3))
-            line(.init(x: 12.8,y: 13.6), .init(x: 11.8,y: 15.1))
-            line(.init(x: 18.8,y: 13.6), .init(x: 19.8,y: 15.1))
-            switch mode {
-            case .linked:
-                line(.init(x: 10.7,y: 2), .init(x: 12.1,y: 3.5), 1.2)
-                line(.init(x: 15.9,y: 0.9), .init(x: 15.9,y: 2.9), 1.3)
-                line(.init(x: 21,y: 2), .init(x: 19.6,y: 3.5), 1.2)
+            // A tall screen leaves little sky above it; put the cue beside it.
+            if aspects.allSatisfy({$0<105}){skyX=2.9}
+            switch mode{
+            case .linked:line(skyX-2,1.4,skyX+2,1.4)
             case .solar:
-                let p = NSBezierPath(); p.appendArc(withCenter: .init(x: 15.8,y: 4.2), radius: 2.45,
-                                                     startAngle: 180, endAngle: 360)
-                p.lineWidth = 1.35; p.stroke()
-            case .attention:
-                line(.init(x: 15.8,y: 0.6), .init(x: 15.8,y: 2.1), 1.6)
-                NSBezierPath(ovalIn: NSRect(x: 15.05,y: 3.05,width: 1.5,height: 1.5)).fill()
+                let p=NSBezierPath();p.appendArc(withCenter:.init(x:skyX,y:3.25),radius:2.05,startAngle:180,endAngle:360)
+                p.lineWidth=1.3;p.stroke()
+            case .attention:line(skyX,0.7,skyX,1.8);NSBezierPath(ovalIn:.init(x:skyX-0.65,y:3,width:1.3,height:1.3)).fill()
             }
             return true
         }
-        image.isTemplate = true; image.accessibilityDescription = "BRIGHTMESS"
-        return image
+        image.isTemplate=true;image.accessibilityDescription="BRIGHTMESS";cache[key]=image;return image
     }
 }

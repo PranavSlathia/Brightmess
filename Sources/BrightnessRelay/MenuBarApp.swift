@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import BrightnessCore
 import Combine
 import Foundation
@@ -33,6 +34,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     private let popover = NSPopover()
     private var didStart = false
     private var terminationSignal: DispatchSourceSignal?
+    private var markMode:DeskMark.Mode = .linked
 
     init(server: RelayHTTPServer) {
         self.server = server
@@ -60,12 +62,13 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
             MainActor.assumeIsolated {
                 guard let self else { return [:] }
                 var result = self.model.diagnostics
-                result["panel"] = "Light desk"
+                result["panel"] = "Source Deck"
                 result["panelVisible"] = self.popover.isShown
                 result["tvPaired"] = self.model.tv.paired != nil
                 result["tvRemoteReady"] = self.model.tv.ready
                 result["deskActions"] = self.model.shortcuts.diagnostics
                 result["windowMoves"] = self.model.windows.successfulMoves
+                result["windowAccessibility"] = AXIsProcessTrusted()
                 result["tvLastSent"] = self.model.tv.lastSent ?? NSNull() as Any
                 result["uiBuild"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? NSNull()
                 return result
@@ -168,8 +171,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         statusItem.isVisible = true
         guard let button = statusItem.button else { return }
         setStatusIcon(.linked)
-        button.toolTip = "BRIGHTMESS: open Light desk"
-        button.setAccessibilityLabel("BRIGHTMESS: open Light desk")
+        button.toolTip = "BRIGHTMESS: open Source Deck"
+        button.setAccessibilityLabel("BRIGHTMESS: open Source Deck")
         button.target = self
         button.action = #selector(togglePopover)
 
@@ -215,7 +218,9 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            openPopover()
+            let mouseClick = NSApp.currentEvent.map { [.leftMouseDown,.leftMouseUp,.rightMouseDown,.rightMouseUp].contains($0.type) } ?? false
+            let clicked = mouseClick ? NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation,$0.frame,false) } : nil
+            openPopover(clickedScreen:clicked)
         }
     }
 
@@ -229,6 +234,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     @objc private func screenParametersChanged() {
+        setStatusIcon(markMode)
+        model.windows.topologyChanged()
         model.colorConfigurationChanged()
         shadeController.updateFrames()
         model.refreshDisplays()
@@ -249,11 +256,17 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     func popoverDidClose(_ notification: Notification) {
         model.setVisible(false); model.shortcuts.cancelRecording(); model.windows.close(); model.tv.close()
     }
-    private func openPopover() {
+    private func openPopover(clickedScreen:NSScreen?=nil) {
         guard let button = statusItem.button else { return }
         guard !popover.isShown else { return }
-        let clicked = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation,$0.frame,false) }
-        model.windows.capture(screen:clicked ?? button.window?.screen)
+        let destination=clickedScreen ?? button.window?.screen
+        model.windows.capture(screen:destination)
+        let height=DeskLayout.height(for:destination?.visibleFrame.height)
+        if popover.contentSize.height != height {
+            popover.contentSize=NSSize(width:DeskLayout.width,height:height)
+            popover.contentViewController=NSHostingController(rootView:BrightnessPopoverView(model:model,height:height))
+        }
+        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         model.tv.open()
         model.refreshDisplays()
         model.setVisible(true)
@@ -267,6 +280,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     private func setStatusIcon(_ mode: DeskMark.Mode) {
+        markMode=mode
         let image = DeskMark.image(mode)
         if statusItem?.button?.image !== image { statusItem?.button?.image = image }
     }
@@ -342,7 +356,6 @@ final class BrightnessMenuModel: ObservableObject {
         #else
         shortcuts = DeskShortcuts(defaults:shortcutDefaults)
         #endif
-        windows.fixture = fixture
         self.server = server
         self.coordinator = server.displayCoordinator
         self.displays = server.displayCoordinator.snapshot()

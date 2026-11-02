@@ -1,6 +1,6 @@
 # BRIGHTMESS
 
-## What Light desk is for
+## What Source Deck is for
 
 Pranav's M4 Mac mini drives a portrait 28-inch Samsung and a 43-inch
 iFFALCON TCL TV. The M2 MacBook Air supplies room and brightness readings.
@@ -10,7 +10,7 @@ window or return the TV to his Mac desktop. Those are different requests:
 | Action | What changes | What stays alone |
 | --- | --- | --- |
 | Adjust brightness or **Follow Air** | The selected screen's Mac output. The Samsung uses hardware brightness; the TV uses a software shade. | The TV source and the arrangement of Mac windows. |
-| **Bring [app] here** or **Choose window…** | One eligible Mac window moves to the monitor where Light desk was opened. | Other windows and the TV picture source. |
+| **Bring a window here** or **All windows…** | One specific, eligible window moves to the display where Source Deck opened, without first focusing its app. | Other windows and the TV input. |
 | **Smart TV** or **Mac mini** | The paired TV is asked to show Home or the mapped HDMI input. | Mac window positions, display connection and brightness settings. |
 | **Disconnect** | A screen is removed from the macOS layout; the last active screen is protected. | This is not a request to turn the panel off or select another HDMI port. |
 
@@ -29,7 +29,7 @@ The current app supports saving a mapping; it does not perform that discovery.
 
 ## Personal controls
 
-Light desk lets the user change each action's icon and record global shortcuts
+Source Deck lets the user change each action's icon and record global shortcuts
 for the window toggle, PS5 and Mac mini. The window toggles between the two
 displays independently of the pointer. Smart TV Home stays click-only. Never
 claim a shortcut is active when another app owns the keys.
@@ -46,9 +46,11 @@ commercial packaging, or TV-side installers are part of the shortcuts release.
 
 ## Character
 
-Illustrated, expressive, recognizably native. Show the physical difference
-between the two displays; let the screen artwork respond to brightness. The
-menu-bar mark must still read as a single silhouette at menu-bar size.
+Source Deck puts the paired TV's three source actions first, the shelf of
+other-screen windows second, and independent display controls third. Use the
+green Desk Plan palette in both appearances. Represent displays using their
+oriented macOS desktop bounds, not a stock TV/portrait illustration. The
+menu-bar mark must remain legible at 23 × 17 points.
 
 ## Principles
 

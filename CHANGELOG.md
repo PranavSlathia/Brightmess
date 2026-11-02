@@ -1,5 +1,16 @@
 # BRIGHTMESS release history
 
+## 0.10.0 · Source Deck on the Mini (build 12)
+
+- Green light/dark layout: three direct TV source actions, a destination-aware
+  window shelf, and independent display controls based on actual desktop geometry.
+- Open on either screen to see eligible windows from the other immediately.
+  App icons and individual window titles are local. Switching inputs and moving
+  windows remain independent. No Screen Recording or Air update.
+- Existing shortcuts, customized icons, TV mapping, pairing, calibration and
+  Follow settings retain their identifiers. The Mini installer backs up the
+  previous app, helper and receiver LaunchAgent before replacing them.
+
 ## 0.9.1 · Shortcuts & icons on the Mini (build 11)
 
 - Light desk has an editor for the move-window, PS5 and Mac mini global

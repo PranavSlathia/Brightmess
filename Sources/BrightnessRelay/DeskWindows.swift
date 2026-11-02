@@ -1,155 +1,97 @@
 import AppKit
-import ApplicationServices
 import BrightnessCore
 
-private func axValue(_ element: AXUIElement, _ key: String) -> CFTypeRef? {
-    var value: CFTypeRef?
-    return AXUIElementCopyAttributeValue(element,key as CFString,&value) == .success ? value : nil
-}
-
-struct DeskWindow: Identifiable {
-    let id = UUID()
-    let app: String, title: String, owner: pid_t, element: AXUIElement, original: CGDirectDisplayID
-}
-
 @MainActor final class DeskWindows: ObservableObject {
-    @Published var focus: DeskWindow?
-    @Published var choices = [DeskWindow]()
-    @Published var notice = ""
-    @Published var showing = false
-    @Published var trusted = false
-    private(set) var successfulMoves = 0
-    private var destination: CGDirectDisplayID?
-    private var lastExternal: NSRunningApplication?
-    private var activationObserver: NSObjectProtocol?
-    var fixture = false
-    var destinationName: String { screens.first { $0.id == destination }?.name ?? "this screen" }
-    private struct Screen {
-        let id: CGDirectDisplayID, name: String, frame: CGRect, usable: CGRect
+    @Published private(set) var focus:DeskWindow?
+    @Published private(set) var choices=[DeskWindow]()
+    @Published private(set) var notice=""
+    @Published private(set) var showing=false
+    @Published private(set) var trusted=false
+    @Published private(set) var loading=false
+    @Published private(set) var destinationName="this screen"
+    @Published private(set) var sourceNames=""
+    @Published private(set) var hint=""
+    private(set) var successfulMoves=0
+    private var port:any WindowDeskPort
+    private var destination:UInt32?, ticket=UUID(), job:Task<Void,Never>?
+    private var lastExternal:NSRunningApplication?, observer:NSObjectProtocol?
+    private var iconCache=[String:NSImage]()
+    init(port:(any WindowDeskPort)?=nil){self.port=port ?? MacWindowDesk()}
+
+    func capture(screen:NSScreen?) {
+        capture(destination:(screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value)
     }
-    private var screens: [Screen] {
-        let top = CGDisplayBounds(CGMainDisplayID()).height
-        func flip(_ r: NSRect) -> CGRect { CGRect(x:r.minX,y:top-r.maxY,width:r.width,height:r.height) }
-        return NSScreen.screens.compactMap {
-            guard let number = $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
-            return Screen(id:number.uint32Value,name:$0.localizedName,frame:flip($0.frame),usable:flip($0.visibleFrame))
+    func capture(destination id:UInt32?) {
+        close();destination=id;trusted=port.trusted
+        // Capture the exact focused AX window before the popover activates.
+        focus=trusted ? port.current(previous:lastExternal):nil
+        refresh()
+    }
+    func topologyChanged(){if destination != nil { refresh() }}
+    func refresh() {
+        job?.cancel();ticket=UUID()
+        let request=ticket,screens=port.screens
+        trusted=port.trusted;choices=[];iconCache=[:];loading=false
+        guard let dest=destination,let screen=screens.first(where:{$0.id==dest}) else{
+            destinationName="unavailable display";sourceNames="";hint="Destination is no longer connected. Reopen on a connected screen.";return
+        }
+        destinationName=screen.name
+        sourceNames=screens.filter{$0.id != dest}.map(\.name).joined(separator:", ")
+        guard trusted else{hint="Enable Accessibility to list and move windows.";return}
+        guard !sourceNames.isEmpty else{hint="No other Mac display is connected.";return}
+        loading=true;hint="Finding windows…"
+        let backend=port
+        job=Task { [weak self] in
+            let rows=await backend.inventory(excluding:dest,screens:screens)
+            guard !Task.isCancelled,let self,self.ticket==request,self.destination==dest else{return}
+            guard backend.trusted,backend.screens.contains(where:{$0.id==dest}) else{self.refresh();return}
+            self.choices=rows.map { row in var w=row;w.shelfTicket=request;return w }
+            self.loading=false;self.hint=rows.isEmpty ? "No movable windows on "+self.sourceNames+"." : ""
         }
     }
-    private func frame(_ el: AXUIElement) -> CGRect? {
-        guard let p = axValue(el,kAXPositionAttribute), let s = axValue(el,kAXSizeAttribute),
-              CFGetTypeID(p) == AXValueGetTypeID(), CFGetTypeID(s) == AXValueGetTypeID() else { return nil }
-        var pos = CGPoint.zero, size = CGSize.zero
-        guard AXValueGetValue(p as! AXValue,.cgPoint,&pos), AXValueGetValue(s as! AXValue,.cgSize,&size),
-              size.width > 0, size.height > 0 else { return nil }
-        return CGRect(origin:pos,size:size)
+    func icon(for window:DeskWindow)->NSImage? {
+        let key="\(window.owner)/\(window.app)"
+        if let img=iconCache[key]{return img}
+        let img=port.icon(for:window);iconCache[key]=img;return img
     }
-    private func screen(_ rect: CGRect) -> Screen? {
-        screens.compactMap { s -> (Screen,CGFloat)? in
-            let i = s.frame.intersection(rect)
-            return i.isNull || i.isEmpty ? nil : (s,i.width*i.height)
-        }.max { $0.1 < $1.1 }?.0
+    func label(_ window:DeskWindow)->String {
+        "\(window.app) · \(window.displayTitle) · "+(port.screens.first{$0.id==window.original}?.name ?? "Unavailable")
     }
-    private func entry(_ el: AXUIElement, _ app: NSRunningApplication) -> DeskWindow? {
-        guard axValue(el,kAXRoleAttribute) as? String == kAXWindowRole,
-              axValue(el,kAXSubroleAttribute) as? String == kAXStandardWindowSubrole,
-              (axValue(el,kAXMinimizedAttribute) as? Bool) != true,
-              let r = frame(el), let screen = screen(r) else { return nil }
-        return DeskWindow(app:app.localizedName ?? "Application",title:axValue(el,kAXTitleAttribute) as? String ?? "",
-                          owner:app.processIdentifier,element:el,original:screen.id)
+    func list(){ showing.toggle();if showing{refresh()} }
+    func bring(_ w:DeskWindow) {
+        guard let id=destination,w.shelfTicket==ticket,choices.contains(where:{$0.id==w.id && $0.original==w.original}) else{
+            notice="That window list has changed. Choose it again.";return
+        }
+        move(w,to:id)
     }
-    private func current(allowPrevious: Bool = false) -> DeskWindow? {
-        let front = NSWorkspace.shared.frontmostApplication
-        let app = front?.processIdentifier == getpid() && allowPrevious ? lastExternal : front
-        guard let app, !app.isTerminated, app.processIdentifier != getpid() else { return nil }
-        let ax = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(ax,0.35)
-        guard let el = axValue(ax,kAXFocusedWindowAttribute), CFGetTypeID(el) == AXUIElementGetTypeID() else { return nil }
-        return entry(el as! AXUIElement,app)
-    }
-    func capture(screen: NSScreen?) {
-        trusted = AXIsProcessTrusted()
-        destination = (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
-        focus = trusted ? current(allowPrevious:true) : nil; choices = []; showing = false
-    }
-    var canBring: Bool { focus != nil && focus?.original != destination }
-    func list() {
-        guard !fixture else { return }
-        trusted = AXIsProcessTrusted()
-        guard trusted else { notice = "Enable Accessibility to list windows."; return }
-        if showing { showing = false; choices = []; return }
-        showing = true
-        choices = NSWorkspace.shared.runningApplications.filter {
-            $0.activationPolicy == .regular && $0.processIdentifier != getpid() && !$0.isHidden
-        }.flatMap { app in
-            let ax = AXUIElementCreateApplication(app.processIdentifier)
-            AXUIElementSetMessagingTimeout(ax,0.25)
-            return (axValue(ax,kAXWindowsAttribute) as? [AXUIElement] ?? []).compactMap { entry($0,app) }
-        }.filter { $0.original != destination }.sorted { ($0.app,$0.title) < ($1.app,$1.title) }
-    }
-    func label(_ window: DeskWindow) -> String {
-        "\(window.app) · \(window.title.isEmpty ? "Untitled" : window.title) · \(screens.first { $0.id == window.original }?.name ?? "Unavailable")"
-    }
-    private func settable(_ el: AXUIElement, _ attr: String) -> Bool {
-        var result = DarwinBoolean(false)
-        return AXUIElementIsAttributeSettable(el,attr as CFString,&result) == .success && result.boolValue
-    }
-    func bring(_ w: DeskWindow) { if !fixture { move(w,to:destination) } }
-    private func move(_ w: DeskWindow,to id: CGDirectDisplayID?) {
-        trusted = AXIsProcessTrusted()
+    private func move(_ w:DeskWindow,to id:UInt32) {
         do {
-            try WindowPlacement.move(original:w.original,destination:id,trusted:trusted,usable:{ id in
-                self.screens.first { $0.id == id }?.usable
-            },read:{
-                var pid: pid_t = 0
-                guard AXUIElementGetPid(w.element,&pid) == .success, pid == w.owner,
-                      let rect = self.frame(w.element), let s = self.screen(rect),
-                      axValue(w.element,kAXMinimizedAttribute) as? Bool != true else { return nil }
-                return .init(screen:s.id,rect:rect,usable:s.usable,fullScreen:axValue(w.element,"AXFullScreen") as? Bool == true,
-                             movable:self.settable(w.element,kAXPositionAttribute))
-            },write:{ target in
-                var origin = target.origin, size = target.size
-                let resize = self.settable(w.element,kAXSizeAttribute) && self.frame(w.element)?.size != size
-                func resizeIfNeeded() {
-                    if resize, let v = AXValueCreate(.cgSize,&size) { _ = AXUIElementSetAttributeValue(w.element,kAXSizeAttribute as CFString,v) }
-                }
-                resizeIfNeeded()
-                guard let pos = AXValueCreate(.cgPoint,&origin),
-                      AXUIElementSetAttributeValue(w.element,kAXPositionAttribute as CFString,pos) == .success else { return false }
-                resizeIfNeeded(); return true
-            })
-        } catch { notice = error.localizedDescription; return }
-        guard let to = screens.first(where:{ $0.id == id }) else { notice = "Destination disconnected."; return }
-        successfulMoves += 1
-        notice = "Moved \(w.app) to \(to.name)."; focus = nil; showing = false; choices = []
-        NSRunningApplication(processIdentifier:w.owner)?.activate(options: [])
-        AXUIElementPerformAction(w.element,kAXRaiseAction as CFString)
+            try port.move(w,to:id);successfulMoves+=1
+            notice="Moved "+w.app+" to "+(port.screens.first{$0.id==id}?.name ?? "the destination")+"."
+            if focus?.id==w.id || focus.map({$0.owner==w.owner && CFEqual($0.element,w.element)}) == true {focus=nil}
+        } catch { notice=error.localizedDescription }
+        if destination != nil {refresh()}
     }
-    func toggle(captured: Bool) {
-        guard !fixture else { return }
-        guard AXIsProcessTrusted() else { notice = "Moving windows needs Accessibility."; NSSound.beep(); return }
-        guard let w = captured ? focus : current() else { notice = "Focus a normal app window first."; NSSound.beep(); return }
-        guard let other = WindowPlacement.otherDisplay(containing:w.original, connected:screens.map(\.id)) else {
-            notice = "Connect two separate displays to move a window between them."; NSSound.beep(); return
+    func toggle(captured:Bool) {
+        guard port.trusted else{notice="Moving windows needs Accessibility.";NSSound.beep();return}
+        guard let w=captured ? focus : port.current(previous:nil) else{notice="Focus a normal app window first.";NSSound.beep();return}
+        guard let other=WindowPlacement.otherDisplay(containing:w.original,connected:port.screens.map(\.id)) else{
+            notice="Connect two separate displays to move a window between them.";return
         }
         move(w,to:other)
     }
     func observeFocus() {
-        lastExternal = NSWorkspace.shared.frontmostApplication
-        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(forName:NSWorkspace.didActivateApplicationNotification,object:nil,queue:.main) { [weak self] n in
-            guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  app.activationPolicy == .regular, app.processIdentifier != getpid() else { return }
-            MainActor.assumeIsolated { self?.lastExternal = app }
+        lastExternal=NSWorkspace.shared.frontmostApplication
+        observer=NSWorkspace.shared.notificationCenter.addObserver(forName:NSWorkspace.didActivateApplicationNotification,object:nil,queue:.main){[weak self] n in
+            guard let app=n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.activationPolicy == .regular,app.processIdentifier != getpid() else{return}
+            MainActor.assumeIsolated{self?.lastExternal=app}
         }
     }
-    func close() { choices = []; focus = nil; showing = false }
-    func stop() {
-        if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
-        activationObserver = nil
-    }
+    func close(){job?.cancel();job=nil;ticket=UUID();destination=nil;focus=nil;choices=[];iconCache=[:];showing=false;loading=false;notice="";sourceNames="";hint=""}
+    func stop(){close();if let observer{NSWorkspace.shared.notificationCenter.removeObserver(observer)};observer=nil}
     #if DEBUG
-    func loadFixture() {
-        fixture = true; trusted = true; destination = 51000
-        focus = DeskWindow(app:"Safari",title:"Fixture browser",owner:0,element:AXUIElementCreateSystemWide(),original:51001)
-    }
+    func loadFixture(onTV:Bool=false){let desk=FixtureWindowDesk();port=desk;capture(destination:onTV ? desk.tv:desk.samsung)}
+    func finishScan() async {await job?.value}
     #endif
 }

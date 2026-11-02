@@ -109,6 +109,8 @@ struct DeskChord: Codable, Equatable {
     }
     private func updateDemand() { tvNeeded?(registrations[.ps5] != nil || registrations[.mac] != nil) }
     func binding(_ a: DeskAction) -> DeskChord? { settings.bindings[a.rawValue] }
+    /// Only a Carbon registration (not a saved preference) can advertise a live key.
+    func activeBinding(_ a: DeskAction) -> DeskChord? { registrations[a] == nil ? nil:binding(a) }
     func symbol(_ a: DeskAction) -> String { settings.icons[a.rawValue] ?? a.symbol }
     func changeIcon(_ a: DeskAction,_ name: String) {
         guard DeskAction.symbols.contains(where:{$0.0 == name}) else { return }
@@ -203,6 +205,8 @@ struct DeskChord: Codable, Equatable {
         fake.changeIcon(.mac,"star"); fake.changeIcon(.home,"tv.fill")
         let restored = fixture(defaults:defaults)
         try require(restored.symbol(.mac) == "star" && restored.symbol(.home) == "tv.fill" && restored.binding(.mac) == fake.binding(.mac),"Actions did not persist.")
+        try require(fake.activeBinding(.mac) != nil && restored.activeBinding(.mac) == nil,
+                    "The deck advertised a saved but unregistered shortcut.")
         fake.clear(.ps5); try require(wantsTV,"Disabling one binding closed the other TV session.")
         fake.clear(.mac); try require(!wantsTV,"TV kept running after last TV shortcut was cleared.")
         fake.clear(.move); try require(fixture(defaults:defaults).binding(.move) == nil,"Cleared legacy shortcut reappeared.")

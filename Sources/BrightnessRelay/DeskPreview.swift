@@ -28,7 +28,8 @@ import BrightnessHardware
             Array(["LU28R55", "Beyond TV"].prefix(count)).enumerated().map { index, name in
                 ExternalDisplay(id: "test-desk-\(index)", displayID: UInt32(51000+index), name: name,
                     vendorID: index == 0 ? 0x4c2d : 0x6318, productID: UInt32(index+1),
-                    serialNumber: 0, edidUUID: "", ioLocation: "", isMain: index == 0, supportsStandby: false, deskShape: index == 0 ? .portraitMonitor : .television)
+                    serialNumber: 0, edidUUID: "", ioLocation: "", isMain: index == 0, supportsStandby: false, deskShape: index == 0 ? .portraitMonitor : .television,
+                    desktopWidth:index == 0 ? 1692:1920,desktopHeight:index == 0 ? 3008:1080,desktopX:index == 0 ? 0:-1920)
             }
         }
         func set(percentage: UInt16, on display: ExternalDisplay) throws { if display.shape == .television { throw CLIError.invalidValue("Software-only fixture") } }
@@ -71,7 +72,7 @@ import BrightnessHardware
         let model = BrightnessMenuModel(server: server,fixture:true,shortcutDefaults:prefs)
         model.shortcuts.suggestions()
         model.actionsOpen = args.values.contains("--shortcuts")
-        model.windows.loadFixture()
+        model.windows.loadFixture(onTV:args.values.contains("--on-tv"))
         let time = Date().timeIntervalSince1970
         var presence = SourcePresence()
         presence.receive(mode: .live, state: .awake, time: time, brightness: 0.62)
@@ -97,7 +98,7 @@ import BrightnessHardware
         try png.write(to: URL(fileURLWithPath: path), options: .atomic)
         if interactive {
             coordinator.setOnChanged { [weak model] value in DispatchQueue.main.async { model?.updateDisplays(value) } }
-            window.title = "Light desk – isolated test displays"
+            window.title = "Source Deck – isolated test displays"
             window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
             let close = CloseHandler(); window.delegate = close
             withExtendedLifetime(close) { NSApp.run() }

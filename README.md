@@ -1,7 +1,7 @@
 # BRIGHTMESS
 
 BRIGHTMESS is a native macOS menu-bar app for a desk with more than one
-screen. Its **Light desk** popover lets you follow a MacBook Air's brightness,
+screen. Its **Source Deck** popover lets you follow a MacBook Air's brightness,
 bring a Mac window to the monitor in front of you, or change what a paired TV
 is showing. Moving a window never switches the TV input, and changing the TV
 input never moves a window.
@@ -12,27 +12,30 @@ confirmed on the TV itself. No USB debugging or TV-side app was needed.
 The TV also identified HDMI 1, but the PS5 was off and switching to it was
 not verified.
 
-[Light desk controls](#menu-bar-controls) · [Install](#install) ·
+[Source Deck controls](#menu-bar-controls) · [Install](#install) ·
 [TCL setup and field notes](research/LIGHT-DESK-0.9.md#verified-return-to-hdmi-3-over-wi-fi) ·
 [Release history](CHANGELOG.md)
 
 ## Menu-bar controls
 
-Click the paired-screen menu-bar icon to open **Light desk** (Mini 0.9.1,
-build 11). Each illustration follows its screen's applied brightness. Click
-the artwork or **Details** for exact readings and calibration. This release
-does not require an update to an existing 0.8 Air helper.
+Click the paired-screen menu-bar icon to open **Source Deck** (Mini 0.10.0,
+build 12). TV sources come first, then windows from your other display, then
+independent display controls. The small display shapes use macOS desktop
+proportions; they do not claim a panel's physical size or native resolution.
+Click the shape or **Details** for readings and calibration. No Air update is needed.
 
-![BRIGHTMESS Light desk with window moves, Samsung and TV brightness, and TV input buttons; example data](docs/light-desk.png)
+![Native Source Deck with three TV sources and individually selectable windows; synthetic data](docs/source-deck.png)
 
-**Move windows:** Open Light desk on the destination monitor. **Bring [app] here**
-moves the window you were using; **Choose window…** lists other eligible windows
-by app, title and screen. **Move to other screen** sends a window in either
-direction, based on which display actually contains it. This changes no TV
-input. Allow Accessibility for the Mini app. True full-screen
-windows must exit full screen first. Screen Recording is not needed.
+**Bring a window here:** Open the menu on Samsung and click an app icon and
+window title under **From Beyond TV**. Open it on the TV to bring windows
+from Samsung instead. The shelf doesn't depend on which app was focused.
+**All windows…** expands the list; **Move focused window** remains a separate
+action. Moving one window doesn't switch the TV input. macOS must still
+see both displays; if switching HDMI makes it relocate a window, the shelf
+uses the current layout. Only movable, non-minimized, non-full-screen standard
+windows are offered. Accessibility is required, not Screen Recording.
 
-**Shortcuts & icons:** click this control at the bottom of Light desk. Click
+**Shortcuts & icons:** click this control at the bottom of Source Deck. Click
 an action's symbol to change its icon, or click its key field to record a new
 combination. Esc cancels; × clears only that action. **Use suggested keys**
 fills unassigned actions without overwriting existing shortcuts:
@@ -258,11 +261,11 @@ BR_TEST_LOG="$(mktemp -t brightmess-sim)" ./scripts/swiftpm.sh run brightness-re
 The self-test covers TV protocol framing and pairing, window movement, brightness/colour calibration,
 sensor validity/expiry, backwards compatibility, authenticated and replay-safe
 packets, keyboard steps and disconnect policy. The Swift Testing suite remains
-under Tests/; the current Command Line Tools lacks that testing module.
+under Tests/; select a full Xcode toolchain when Command Line Tools lacks Testing.
 
-The Mini's bundle version is **0.9.1**, while the compatible receiver API
+The Mini's bundle version is **0.10.0**, while the compatible receiver API
 still reports **0.8.0**. In `status`, check `controls.uiBuild` for the Mini
-build (`11`), and `sourceMode` for the Air's mode. Examples:
+build (`12`), and `sourceMode` for the Air's mode. Examples:
 
 ```sh
 brightness-relay status --host 127.0.0.1

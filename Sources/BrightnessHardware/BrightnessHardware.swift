@@ -64,6 +64,9 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
     public let supportsStandby: Bool
     // Optional so recovery records created by earlier releases still decode.
     public let deskShape: DeskDisplayShape?
+    /// Oriented macOS desktop points, not panel pixels or physical inches.
+    /// Older recovery records have no geometry; do not invent a ratio for them.
+    public let desktopWidth: Double?, desktopHeight: Double?, desktopX: Double?
     public var shape: DeskDisplayShape { deskShape ?? .identify(name: name, portrait: false) }
 
     public init(
@@ -76,7 +79,8 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
         edidUUID: String,
         ioLocation: String,
         isMain: Bool,
-        supportsStandby: Bool, deskShape: DeskDisplayShape? = nil
+        supportsStandby: Bool, deskShape: DeskDisplayShape? = nil,
+        desktopWidth: Double? = nil, desktopHeight: Double? = nil, desktopX: Double? = nil
     ) {
         self.id = id
         self.displayID = displayID
@@ -89,6 +93,7 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
         self.isMain = isMain
         self.supportsStandby = supportsStandby
         self.deskShape = deskShape
+        self.desktopWidth = desktopWidth; self.desktopHeight = desktopHeight; self.desktopX = desktopX
     }
 }
 
@@ -122,7 +127,8 @@ public final class ExternalDDCController: @unchecked Sendable {
         guard copied > 0 else { return [] }
 
         return rawDisplays.prefix(min(Int(copied), rawDisplays.count)).map { raw in
-            ExternalDisplay(
+            let bounds = CGDisplayBounds(raw.displayID)
+            return ExternalDisplay(
                 id: Self.string(from: raw.stableID),
                 displayID: raw.displayID,
                 name: Self.string(from: raw.name),
@@ -134,7 +140,8 @@ public final class ExternalDDCController: @unchecked Sendable {
                 isMain: raw.isMain != 0,
                 supportsStandby: raw.supportsStandby != 0,
                 deskShape: .identify(name: Self.string(from: raw.name),
-                    portrait: CGDisplayBounds(raw.displayID).height > CGDisplayBounds(raw.displayID).width)
+                    portrait: bounds.height > bounds.width),
+                desktopWidth: bounds.width, desktopHeight: bounds.height, desktopX: bounds.minX
             )
         }
     }

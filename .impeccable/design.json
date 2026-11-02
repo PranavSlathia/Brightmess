@@ -1,0 +1,363 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-02T09:22:49.759Z",
+  "title": "Design System: BRIGHTMESS",
+  "extensions": {
+    "colorMeta": {
+      "forest": {
+        "role": "primary",
+        "displayName": "Forest",
+        "tonalRamp": [
+          "oklch(15% 0.026 167.2)",
+          "oklch(26% 0.039 167.2)",
+          "oklch(38% 0.047 167.2)",
+          "oklch(49% 0.052 167.2)",
+          "oklch(61% 0.052 167.2)",
+          "oklch(72% 0.047 167.2)",
+          "oklch(84% 0.034 167.2)",
+          "oklch(95% 0.016 167.2)"
+        ]
+      },
+      "cream": {
+        "role": "neutral",
+        "displayName": "Cream",
+        "tonalRamp": [
+          "oklch(15% 0.011 121.0)",
+          "oklch(26% 0.016 121.0)",
+          "oklch(38% 0.020 121.0)",
+          "oklch(49% 0.022 121.0)",
+          "oklch(61% 0.022 121.0)",
+          "oklch(72% 0.020 121.0)",
+          "oklch(84% 0.014 121.0)",
+          "oklch(95% 0.007 121.0)"
+        ]
+      },
+      "pear": {
+        "role": "primary",
+        "displayName": "Pear",
+        "tonalRamp": [
+          "oklch(15% 0.033 120.7)",
+          "oklch(26% 0.050 120.7)",
+          "oklch(38% 0.059 120.7)",
+          "oklch(49% 0.066 120.7)",
+          "oklch(61% 0.066 120.7)",
+          "oklch(72% 0.059 120.7)",
+          "oklch(84% 0.043 120.7)",
+          "oklch(95% 0.020 120.7)"
+        ]
+      },
+      "leaf": {
+        "role": "secondary",
+        "displayName": "Leaf",
+        "tonalRamp": [
+          "oklch(15% 0.079 124.3)",
+          "oklch(26% 0.119 124.3)",
+          "oklch(38% 0.143 124.3)",
+          "oklch(49% 0.159 124.3)",
+          "oklch(61% 0.159 124.3)",
+          "oklch(72% 0.143 124.3)",
+          "oklch(84% 0.103 124.3)",
+          "oklch(95% 0.048 124.3)"
+        ]
+      },
+      "ground-light": {
+        "role": "neutral",
+        "displayName": "Ground light",
+        "tonalRamp": [
+          "oklch(15% 0.007 119.1)",
+          "oklch(26% 0.011 119.1)",
+          "oklch(38% 0.013 119.1)",
+          "oklch(49% 0.015 119.1)",
+          "oklch(61% 0.015 119.1)",
+          "oklch(72% 0.013 119.1)",
+          "oklch(84% 0.010 119.1)",
+          "oklch(95% 0.004 119.1)"
+        ]
+      },
+      "ground-dark": {
+        "role": "neutral",
+        "displayName": "Ground dark",
+        "tonalRamp": [
+          "oklch(15% 0.015 165.9)",
+          "oklch(26% 0.022 165.9)",
+          "oklch(38% 0.026 165.9)",
+          "oklch(49% 0.029 165.9)",
+          "oklch(61% 0.029 165.9)",
+          "oklch(72% 0.026 165.9)",
+          "oklch(84% 0.019 165.9)",
+          "oklch(95% 0.009 165.9)"
+        ]
+      },
+      "ink-light": {
+        "role": "neutral",
+        "displayName": "Ink light",
+        "tonalRamp": [
+          "oklch(15% 0.026 165.7)",
+          "oklch(26% 0.040 165.7)",
+          "oklch(38% 0.047 165.7)",
+          "oklch(49% 0.053 165.7)",
+          "oklch(61% 0.053 165.7)",
+          "oklch(72% 0.047 165.7)",
+          "oklch(84% 0.034 165.7)",
+          "oklch(95% 0.016 165.7)"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Ink dark",
+        "tonalRamp": [
+          "oklch(15% 0.014 115.7)",
+          "oklch(26% 0.021 115.7)",
+          "oklch(38% 0.025 115.7)",
+          "oklch(49% 0.028 115.7)",
+          "oklch(61% 0.028 115.7)",
+          "oklch(72% 0.025 115.7)",
+          "oklch(84% 0.018 115.7)",
+          "oklch(95% 0.008 115.7)"
+        ]
+      },
+      "muted-light": {
+        "role": "neutral",
+        "displayName": "Muted light",
+        "tonalRamp": [
+          "oklch(15% 0.019 162.6)",
+          "oklch(26% 0.029 162.6)",
+          "oklch(38% 0.034 162.6)",
+          "oklch(49% 0.038 162.6)",
+          "oklch(61% 0.038 162.6)",
+          "oklch(72% 0.034 162.6)",
+          "oklch(84% 0.025 162.6)",
+          "oklch(95% 0.011 162.6)"
+        ]
+      },
+      "muted-dark": {
+        "role": "neutral",
+        "displayName": "Muted dark",
+        "tonalRamp": [
+          "oklch(15% 0.015 137.4)",
+          "oklch(26% 0.023 137.4)",
+          "oklch(38% 0.027 137.4)",
+          "oklch(49% 0.030 137.4)",
+          "oklch(61% 0.030 137.4)",
+          "oklch(72% 0.027 137.4)",
+          "oklch(84% 0.020 137.4)",
+          "oklch(95% 0.009 137.4)"
+        ]
+      },
+      "rule-light": {
+        "role": "neutral",
+        "displayName": "Rule light",
+        "tonalRamp": [
+          "oklch(15% 0.018 137.1)",
+          "oklch(26% 0.027 137.1)",
+          "oklch(38% 0.032 137.1)",
+          "oklch(49% 0.036 137.1)",
+          "oklch(61% 0.036 137.1)",
+          "oklch(72% 0.032 137.1)",
+          "oklch(84% 0.023 137.1)",
+          "oklch(95% 0.011 137.1)"
+        ]
+      },
+      "rule-dark": {
+        "role": "neutral",
+        "displayName": "Rule dark",
+        "tonalRamp": [
+          "oklch(15% 0.018 158.2)",
+          "oklch(26% 0.026 158.2)",
+          "oklch(38% 0.032 158.2)",
+          "oklch(49% 0.035 158.2)",
+          "oklch(61% 0.035 158.2)",
+          "oklch(72% 0.032 158.2)",
+          "oklch(84% 0.023 158.2)",
+          "oklch(95% 0.011 158.2)"
+        ]
+      },
+      "shelf-light": {
+        "role": "neutral",
+        "displayName": "Shelf light",
+        "tonalRamp": [
+          "oklch(15% 0.020 120.8)",
+          "oklch(26% 0.031 120.8)",
+          "oklch(38% 0.037 120.8)",
+          "oklch(49% 0.041 120.8)",
+          "oklch(61% 0.041 120.8)",
+          "oklch(72% 0.037 120.8)",
+          "oklch(84% 0.027 120.8)",
+          "oklch(95% 0.012 120.8)"
+        ]
+      },
+      "shelf-dark": {
+        "role": "neutral",
+        "displayName": "Shelf dark",
+        "tonalRamp": [
+          "oklch(15% 0.019 160.7)",
+          "oklch(26% 0.029 160.7)",
+          "oklch(38% 0.035 160.7)",
+          "oklch(49% 0.039 160.7)",
+          "oklch(61% 0.039 160.7)",
+          "oklch(72% 0.035 160.7)",
+          "oklch(84% 0.025 160.7)",
+          "oklch(95% 0.012 160.7)"
+        ]
+      },
+      "button-light": {
+        "role": "neutral",
+        "displayName": "Button light",
+        "tonalRamp": [
+          "oklch(15% 0.007 115.0)",
+          "oklch(26% 0.011 115.0)",
+          "oklch(38% 0.013 115.0)",
+          "oklch(49% 0.015 115.0)",
+          "oklch(61% 0.015 115.0)",
+          "oklch(72% 0.013 115.0)",
+          "oklch(84% 0.010 115.0)",
+          "oklch(95% 0.004 115.0)"
+        ]
+      },
+      "button-dark": {
+        "role": "neutral",
+        "displayName": "Button dark",
+        "tonalRamp": [
+          "oklch(15% 0.019 158.2)",
+          "oklch(26% 0.029 158.2)",
+          "oklch(38% 0.035 158.2)",
+          "oklch(49% 0.039 158.2)",
+          "oklch(61% 0.039 158.2)",
+          "oklch(72% 0.035 158.2)",
+          "oklch(84% 0.025 158.2)",
+          "oklch(95% 0.012 158.2)"
+        ]
+      },
+      "accent-light": {
+        "role": "primary",
+        "displayName": "Accent light",
+        "tonalRamp": [
+          "oklch(15% 0.029 159.9)",
+          "oklch(26% 0.043 159.9)",
+          "oklch(38% 0.052 159.9)",
+          "oklch(49% 0.058 159.9)",
+          "oklch(61% 0.058 159.9)",
+          "oklch(72% 0.052 159.9)",
+          "oklch(84% 0.037 159.9)",
+          "oklch(95% 0.017 159.9)"
+        ]
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "Accent dark",
+        "tonalRamp": [
+          "oklch(15% 0.034 124.1)",
+          "oklch(26% 0.051 124.1)",
+          "oklch(38% 0.061 124.1)",
+          "oklch(49% 0.068 124.1)",
+          "oklch(61% 0.068 124.1)",
+          "oklch(72% 0.061 124.1)",
+          "oklch(84% 0.044 124.1)",
+          "oklch(95% 0.020 124.1)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "TV source heading"
+      },
+      "source": {
+        "displayName": "Source",
+        "purpose": "Source key name"
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "Secondary band title"
+      },
+      "device": {
+        "displayName": "Device",
+        "purpose": "Display name"
+      },
+      "imprint": {
+        "displayName": "Imprint",
+        "purpose": "BRIGHTMESS imprint"
+      },
+      "route": {
+        "displayName": "Route",
+        "purpose": "Source route or compact action"
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "Status strip",
+      "kind": "custom",
+      "refersTo": "status-strip",
+      "description": "Fixed native status band.",
+      "html": "<div class=\"ds-strip\"><strong>BRIGHTMESS</strong><span>Air live</span><button>Sync now</button></div>",
+      "css": ".ds-strip{background:#153d2f;color:#f4f9e9;height:36px;padding:0 16px;display:flex;align-items:center;gap:7px;font:500 11px system-ui}.ds-strip strong{margin-right:auto;font-size:12px;letter-spacing:.7px}.ds-strip button{background:none;color:inherit;border:0;font:inherit}.ds-strip button:hover{text-decoration:underline}.ds-strip button:focus-visible{outline:2px solid currentColor}.ds-strip button:active{opacity:.7}"
+    },
+    {
+      "name": "TV source key",
+      "kind": "button",
+      "refersTo": "source-key",
+      "description": "A request to the TV, not a selected-state indicator.",
+      "html": "<button class=\"ds-key\"><svg viewBox=\"0 0 24 20\" aria-hidden=\"true\"><path d=\"M5 17V9M19 17V9M3 9l9-7 9 7M5 17h14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/></svg><b>Smart TV</b><small>Home</small></button>",
+      "css": ".ds-key{position:relative;overflow:hidden;height:99px;width:134px;display:flex;flex-direction:column;justify-content:end;align-items:start;padding:9px;background:#ddebba;color:#153d2f;border:0;border-radius:8px;font:700 19px system-ui;letter-spacing:-.4px}.ds-key svg{position:absolute;right:-5px;top:-3px;width:61px;height:43px;transform:rotate(-9deg);opacity:.64}.ds-key small{font:500 11px system-ui;letter-spacing:0} .ds-key:hover{filter:brightness(.96)} .ds-key:focus-visible{outline:2px solid currentColor;outline-offset:2px} .ds-key:active{filter:brightness(.90)}"
+    },
+    {
+      "name": "Window tile · light",
+      "kind": "button",
+      "refersTo": "window-tile",
+      "description": "One eligible window, with its title below its owner.",
+      "html": "<button class=\"ds-tile\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\" fill=\"none\" stroke=\"currentColor\"/><path d=\"M3 9h18\" stroke=\"currentColor\"/></svg><span><b>Safari</b><small>Reading list</small></span></button>",
+      "css": ".ds-tile{width:135px;height:37px;display:flex;align-items:center;gap:5px;padding:0 6px;text-align:left;background:#F6F8ED;color:#153D2E;border:1px solid #A0B09A;border-radius:6px;font:600 11.5px system-ui}.ds-tile small{display:block;color:#3D574A;font:400 10.5px system-ui} .ds-tile:hover{filter:brightness(.96)} .ds-tile:focus-visible{outline:2px solid currentColor;outline-offset:2px} .ds-tile:active{filter:brightness(.90)}"
+    },
+    {
+      "name": "Window tile · dark",
+      "kind": "button",
+      "refersTo": "window-tile-dark",
+      "description": "One eligible window, with its title below its owner.",
+      "html": "<button class=\"ds-tile\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\" fill=\"none\" stroke=\"currentColor\"/><path d=\"M3 9h18\" stroke=\"currentColor\"/></svg><span><b>Safari</b><small>Reading list</small></span></button>",
+      "css": ".ds-tile{width:135px;height:37px;display:flex;align-items:center;gap:5px;padding:0 6px;text-align:left;background:#2C4436;color:#F0F4DF;border:1px solid #576E60;border-radius:6px;font:600 11.5px system-ui}.ds-tile small{display:block;color:#C0CEBB;font:400 10.5px system-ui} .ds-tile:hover{filter:brightness(.96)} .ds-tile:focus-visible{outline:2px solid currentColor;outline-offset:2px} .ds-tile:active{filter:brightness(.90)}"
+    },
+    {
+      "name": "Display outline",
+      "kind": "custom",
+      "refersTo": "display-glyph",
+      "description": "Portrait display bounds in the standard glyph area.",
+      "html": "<span class=\"ds-display\"><svg viewBox=\"0 0 12 22\" width=\"12\" height=\"22\" aria-hidden=\"true\"><rect x=\".75\" y=\".75\" width=\"10.5\" height=\"20.5\" rx=\"2\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"/></svg></span>",
+      "css": ".ds-display{display:inline-grid;place-items:center;width:27px;height:25px;color:#153d2e;background:#f0f3e8}"
+    },
+    {
+      "name": "Desk footer",
+      "kind": "nav",
+      "refersTo": "footer",
+      "description": "Fixed secondary actions with a connection summary.",
+      "html": "<nav class=\"ds-footer\"><button>Shortcuts &amp; icons</button><button>Desk details</button><span>Displays connected</span></nav>",
+      "css": ".ds-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 16px;color:#153d2e;background:#f0f3e8;border-top:1px solid #a0b09a;font:500 12px system-ui}.ds-footer button{background:none;border:none;color:inherit;font:inherit}.ds-footer span{font-size:11px;color:#3d574a}.ds-footer button:hover{text-decoration:underline}.ds-footer button:focus-visible{outline:2px solid currentColor}.ds-footer button:active{opacity:.7}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Source Deck",
+    "overview": "Three kinds of action share one small Mac popover. The forest band changes what the TV shows; the sage shelf brings a particular Mac window to the opening display; the quieter ground adjusts each display’s output. The deck should make the consequence of the next click visible before the click.",
+    "keyCharacteristics": [
+      "Three equal source keys, with a route printed on each.",
+      "One tile per window, even when several belong to the same app.",
+      "Display outlines follow desktop proportions and order."
+    ],
+    "rules": [
+      {
+        "name": "The Command Rule",
+        "body": "A source key sends a request. Its colour does not identify the picture currently on the TV.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do show the destination by name and include the app and window title on a shelf tile.",
+      "Do keep availability, output origin and permission states legible in words.",
+      "Do show active shortcut bindings only; Smart TV remains click-only."
+    ],
+    "donts": [
+      "Don't treat switching HDMI, moving a Mac window and disconnecting a display as interchangeable.",
+      "Don't substitute a percentage or a colourful thumbnail for the origin of a display reading.",
+      "Don't infer live TV or window-move acceptance from a rendered fixture."
+    ]
+  }
+}

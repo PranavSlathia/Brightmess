@@ -33,6 +33,7 @@ enum RuntimeChecks {
     }
 
     @MainActor static func run() async throws {
+        try await DeskShelfChecks.run()
         func expect(_ test: @autoclosure () -> Bool, _ message: String) throws {
             if !test() { throw Failed.check(message) }
         }
