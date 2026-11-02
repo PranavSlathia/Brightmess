@@ -68,7 +68,8 @@ import BrightnessHardware
         if args.values.contains("--offline") { coordinator.setConnected(false, displayID: "test-desk-1") }
         let server = try RelayHTTPServer(port: 0, authenticator: .init(token: Data(repeating: 4, count: 32)),
             displayCoordinator: coordinator, curve: .init(), loopbackOnly: true)
-        let model = BrightnessMenuModel(server: server)
+        let model = BrightnessMenuModel(server: server,fixture:true)
+        model.windows.loadFixture()
         let time = Date().timeIntervalSince1970
         var presence = SourcePresence()
         presence.receive(mode: .live, state: .awake, time: time, brightness: 0.62)

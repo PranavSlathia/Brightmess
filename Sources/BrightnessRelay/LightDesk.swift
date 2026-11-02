@@ -6,7 +6,7 @@ import SwiftUI
 enum DeskLayout {
     static let width: CGFloat = 450
     static func height(for available: CGFloat?) -> CGFloat {
-        min(470, max(320, (available ?? 700) - 52))
+        min(595, max(320, (available ?? 700) - 52))
     }
 }
 
@@ -25,6 +25,7 @@ struct BrightnessPopoverView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        DeskWindowsView(windows:model.windows, requestAccess:model.requestKeyboardAccess)
                         if model.displays.isEmpty {
                             ContentUnavailableView("No external displays", systemImage: "display",
                                 description: Text("Connect a display, then choose Re-detect in Desk details."))
@@ -32,6 +33,9 @@ struct BrightnessPopoverView: View {
                         }
                         ForEach(model.displays) { state in
                             DeskScreenStrip(model: model, state: state).id(state.id)
+                        }
+                        if let pair = model.tv.paired, !model.displays.contains(where: { $0.id == pair.display }) {
+                            TVStrip(remote:model.tv,display:pair.display)
                         }
                         if model.toolsOpen { tools.id("desk.tools") }
                     }
@@ -55,7 +59,7 @@ struct BrightnessPopoverView: View {
             HStack(alignment: .center, spacing: 7) {
                 Image(nsImage: DeskMark.image(.linked)).renderingMode(.template)
                     .foregroundStyle(DeskPaint.cream).accessibilityHidden(true)
-                Text("BRIGHTNESS RELAY").font(.system(size: 10, weight: .bold)).tracking(1.5)
+                Text("BRIGHTMESS").font(.system(size: 10, weight: .bold)).tracking(1.5)
             }
             Text("Light desk")
                 .font(.system(size: 35, weight: .bold, design: .serif)).tracking(-1.25)
@@ -118,6 +122,7 @@ struct BrightnessPopoverView: View {
     private var tools: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Source details").font(.headline)
+            WindowShortcutView(windows:model.windows)
             Text(model.sourceTitle + " · " + model.sourceAge)
             Text(model.ambientDetail)
             Text(model.receiverStatus)
@@ -251,6 +256,9 @@ private struct DeskScreenStrip: View {
             }
             .font(.system(size: 12, weight: .semibold))
             .padding(.horizontal, 13).padding(.top, 5).padding(.bottom, 10)
+            if state.display.shape == .television && (model.tv.paired == nil || model.tv.paired?.display == state.id) {
+                TVStrip(remote:model.tv,display:state.id)
+            }
             if let error = frontError {
                 Label(error, systemImage: "exclamationmark.triangle").font(.caption)
                     .padding(.horizontal, 12).padding(.bottom, 8)

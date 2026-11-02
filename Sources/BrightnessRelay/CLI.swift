@@ -162,7 +162,7 @@ struct BrightnessRelayCLI {
             print("Requested reconnection of all known screens.")
         case "show-menu":
             try await makeClient(arguments).sendControl(.showMenu)
-            print("Opened the Brightness Relay controller.")
+            print("Opened the BRIGHTMESS controller.")
         case "token":
             try token(arguments)
         case "send":
@@ -443,7 +443,7 @@ struct BrightnessRelayCLI {
     }
 
     private static let help = """
-    Brightness Relay — mirror a MacBook's auto-adjusted brightness to external displays
+    BRIGHTMESS — MacBook brightness sync, TV inputs, and window moves on the Mini
 
     USAGE
       brightness-relay probe

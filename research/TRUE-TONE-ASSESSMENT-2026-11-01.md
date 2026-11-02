@@ -7,6 +7,8 @@ Later implementation update: selected components were integrated and installed
 as Brightness Relay 0.7.0. See [the deployment evidence](IMPLEMENTATION-0.7.0.md)
 for live results and remaining gates. The assessment below records the earlier,
 pre-integration state; it is not the current deployment status.
+For subsequent live sync, the 0.9 Mini controls and their actual test
+results, follow the [release history](../CHANGELOG.md).
 
 ## Recommendation
 

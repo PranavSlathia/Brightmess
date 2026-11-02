@@ -50,12 +50,15 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         model.setKeyboardAccessHandler { [weak keyController] in
             keyController?.requestAccessibility()
         }
+        model.windows.installShortcut()
         server.setUIStatusProvider { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return [:] }
                 var result = self.model.diagnostics
                 result["panel"] = "Light desk"
                 result["panelVisible"] = self.popover.isShown
+                result["tvPaired"] = self.model.tv.paired != nil
+                result["tvRemoteReady"] = self.model.tv.ready
                 result["uiBuild"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? NSNull()
                 return result
             }
@@ -155,8 +158,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         statusItem.isVisible = true
         guard let button = statusItem.button else { return }
         setStatusIcon(.linked)
-        button.toolTip = "Brightness Relay: open light desk"
-        button.setAccessibilityLabel("Brightness Relay: open light desk")
+        button.toolTip = "BRIGHTMESS: open Light desk"
+        button.setAccessibilityLabel("BRIGHTMESS: open Light desk")
         button.target = self
         button.action = #selector(togglePopover)
 
@@ -232,9 +235,15 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         }
     }
 
-    func popoverDidClose(_ notification: Notification) { model.setVisible(false) }
+    func popoverDidClose(_ notification: Notification) {
+        model.setVisible(false); model.windows.close(); model.tv.close()
+    }
     private func openPopover() {
         guard let button = statusItem.button else { return }
+        guard !popover.isShown else { return }
+        let clicked = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation,$0.frame,false) }
+        model.windows.capture(screen:clicked ?? button.window?.screen)
+        model.tv.open()
         model.refreshDisplays()
         model.setVisible(true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -265,6 +274,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
 
 @MainActor
 final class BrightnessMenuModel: ObservableObject {
+    let windows = DeskWindows()
+    let tv: TVRemote
     @Published private(set) var displays: [ManagedDisplayState]
     @Published private(set) var receiverStatus = "Starting receiver…"
     @Published private(set) var sourceTitle = "Waiting for MacBook Air"
@@ -310,7 +321,9 @@ final class BrightnessMenuModel: ObservableObject {
     private var lastAmbient: AmbientSample?
     private var lastColourPacketAt: Date?
 
-    init(server: RelayHTTPServer) {
+    init(server: RelayHTTPServer, fixture: Bool = false) {
+        tv = TVRemote(fixture:fixture)
+        windows.fixture = fixture
         self.server = server
         self.coordinator = server.displayCoordinator
         self.displays = server.displayCoordinator.snapshot()
@@ -548,7 +561,7 @@ private final class DisplayShadeController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Brightness Relay shade for \(displayID)"
+        window.title = "BRIGHTMESS shade for \(displayID)"
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false

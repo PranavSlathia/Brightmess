@@ -1,5 +1,9 @@
 # Brightness Relay 0.7.0 integration evidence
 
+Historical record: app names, paths, scheduling and permission states below
+describe **0.7**, not today's installation. For current instructions, use
+the [README](../README.md#install) and [release history](../CHANGELOG.md).
+
 Verified on 1 November 2026, Mac mini M4 with the portrait Samsung LU28R55
 and Beyond TV. This supersedes deployment-status statements in the earlier
 source assessment, not its upstream findings.
