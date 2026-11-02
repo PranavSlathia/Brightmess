@@ -86,5 +86,8 @@ transport supports enabled CEC; the Samsung's transport does not. With user
 approval a one-off probe sent **one** Active Source frame (`4F 82 30 00`)
 from the Mini's already assigned playback address. No power command, PS5
 input request, retry, TV setting change, or app installation was involved.
-The local controller finished the transmit request; that is not proof of
-what the television displayed.
+The local controller finished the transmit request, but the user observed
+that the TCL stayed on Smart TV Home: **HDMI 3 did not activate**. Do not use
+this announcement as a verified “return to Mac” action on this desk. This
+result does not establish whether the TV-side CEC setting or another
+firmware behavior caused it.
