@@ -7,6 +7,15 @@ struct PairedTV: Codable {
     let service: String, display: String, pin: Data
     var ps5 = "", mini = ""
     var ps5Picker = false, miniPicker = false
+    func route(_ a: DeskAction) -> (code: Int, link: String?, label: String)? {
+        switch a {
+        case .move: return nil
+        case .home: return (3,nil,"Smart TV")
+        case .ps5 where ps5Picker, .mac where miniPicker: return (178,nil,"Open TV inputs")
+        case .ps5: return (243,ps5.isEmpty ? nil : ps5,"PS5")
+        case .mac: return (245,mini.isEmpty ? nil : mini,"Mac mini")
+        }
+    }
 }
 
 @MainActor final class TVRemote: NSObject, ObservableObject, @preconcurrency NetServiceBrowserDelegate, @preconcurrency NetServiceDelegate {
@@ -19,11 +28,18 @@ struct PairedTV: Codable {
     private let pref = "Brightmess.TV.v1"
     private var browser: NetServiceBrowser?
     private var services = [String:NetService](), hosts = [String:String]()
-    private var selected = "", display = "", isPairing = false, visible = false
+    private var selected = "", display = "", isPairing = false
+    private var panelOpen = false, backgroundKeys = false, asleep = false
+    static func needsSession(panel: Bool, keys: Bool, paired: Bool, asleep: Bool) -> Bool {
+        !asleep && (panel || (keys && paired))
+    }
+    private var wanted: Bool { Self.needsSession(panel:panelOpen,keys:backgroundKeys,paired:paired != nil,asleep:asleep) }
+    private(set) var lastSent: String?
     private var socket: NWConnection?, identity: TVIdentity?, peerKey: Data?
     private var generation = UUID()
     private var conversation = TVHandshake(pairing:false), frames = TVFrames()
     private var deadline: DispatchWorkItem?
+    private var retry: DispatchWorkItem?, retryDelay = 2.0
     let fixture: Bool
     init(fixture: Bool = false) {
         self.fixture = fixture
@@ -32,14 +48,26 @@ struct PairedTV: Codable {
         if fixture { ready = true; notice = "Fixture TCL · Remote ready" }
         else if paired != nil { notice = "Looking for paired TV…" }
     }
-    func open() {
-        guard !fixture, browser == nil else { return }
-        visible = true
+    func open() { panelOpen = true; reconcile() }
+    func close() {
+        panelOpen = false
+        if isPairing && busy { stop(); isPairing = false }
+        reconcile()
+    }
+    func keepForShortcuts(_ enabled: Bool) { backgroundKeys = enabled; reconcile() }
+    func sleeping(_ value: Bool) { asleep = value; reconcile() }
+    private func reconcile() {
+        guard !fixture else { return }
+        guard wanted else { shutdown(); return }
+        guard browser == nil else {
+            if socket == nil && retry == nil, let p = paired, hosts[p.service] != nil { reconnect() }
+            return
+        }
         let b = NetServiceBrowser(); browser = b; b.delegate = self
         b.searchForServices(ofType:"_androidtvremote2._tcp.",inDomain:"local.")
     }
-    func close() {
-        visible = false; browser?.stop(); browser = nil
+    func shutdown() {
+        browser?.delegate = nil; browser?.stop(); browser = nil
         for s in services.values { s.delegate = nil; s.stop() }; services = [:]; hosts = [:]; names = []
         stop(); notice = paired == nil ? "Pair your TCL to switch inputs." : "Looking for paired TV…"
     }
@@ -56,7 +84,7 @@ struct PairedTV: Codable {
         guard browser === self.browser else { return }; notice = "Cannot discover TVs. Check Local Network access and Wi-Fi."
     }
     func netServiceDidResolveAddress(_ sender: NetService) {
-        guard visible, sender === services[sender.name], let host = sender.hostName else { return }
+        guard wanted, sender === services[sender.name], let host = sender.hostName else { return }
         hosts[sender.name] = host; names = hosts.keys.sorted()
         if paired?.service == sender.name && socket == nil && !busy { reconnect() }
     }
@@ -64,11 +92,24 @@ struct PairedTV: Codable {
     func reconnect() { if let p = paired { connect(p.service,display:p.display,pairing:false) } }
     private func stop() {
         generation = UUID()
+        retry?.cancel(); retry = nil
         deadline?.cancel(); deadline = nil
         let c = socket; socket = nil; c?.stateUpdateHandler = nil; c?.cancel()
         ready = false; busy = false; wantsCode = false; identity = nil; peerKey = nil
     }
-    private func fail(_ message: String) { stop(); notice = message }
+    private func fail(_ message: String, retryConnection: Bool = true) {
+        let mayRetry = retryConnection && !isPairing && wanted && paired?.service == selected && hosts[selected] != nil
+        stop(); notice = message
+        guard mayRetry else { return }
+        // Only reconnect the paired session. An action is never replayed after reconnection.
+        let ticket = generation
+        let task = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == ticket, self.wanted else { return }
+            self.retry = nil; self.reconnect()
+        }
+        retry = task; DispatchQueue.main.asyncAfter(deadline:.now()+retryDelay,execute:task)
+        retryDelay = min(60,retryDelay*2)
+    }
     private func timeout(_ seconds: Double) {
         deadline?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.fail("TV timed out. Reconnect to try again.") }
@@ -77,7 +118,7 @@ struct PairedTV: Codable {
     private func connect(_ name: String, display: String, pairing: Bool) {
         guard !fixture else { return }
         stop()
-        guard let host = hosts[name], visible else { notice = "TV unavailable on this network."; return }
+        guard let host = hosts[name], wanted else { notice = "TV unavailable on this network."; return }
         do {
             let client = try TVIdentity.load(); identity = client
             let tls = NWProtocolTLS.Options()
@@ -94,7 +135,7 @@ struct PairedTV: Codable {
                       let raw = SecKeyCopyExternalRepresentation(key,nil) as Data?,
                       (try? TVDER.rsaComponents(raw)) != nil else { complete(false); return }
                 guard TVTrust.accepts(raw,pairing:pairing,pinned:expected) else {
-                    complete(false); self.fail("TV identity changed. Confirm the device and pair again."); return
+                    complete(false); self.fail("TV identity changed. Confirm the device and pair again.",retryConnection:false); return
                 }
                 self.peerKey = raw; complete(true)
                 }
@@ -116,14 +157,14 @@ struct PairedTV: Codable {
                 }
             }
             c.start(queue:.main)
-        } catch { fail(error.localizedDescription) }
+        } catch { fail(error.localizedDescription,retryConnection:false) }
     }
     private func send(_ message: Data,on c: NWConnection, label: String? = nil) {
         c.send(content:TVWire.frame(message),completion:.contentProcessed { [weak self,weak c] err in
             MainActor.assumeIsolated {
             guard let self, let c, self.socket === c else { return }
             if err != nil { self.fail("Could not send to TV. Nothing will be retried.") }
-            else if let label { self.notice = "Command sent · "+label }
+            else if let label { self.lastSent = label; self.notice = "Command sent · "+label }
             }
         })
     }
@@ -146,7 +187,7 @@ struct PairedTV: Codable {
                         self.reconnect(); return
                     case .ready:
                         if !self.ready { self.notice = "TV remote ready" }
-                        self.deadline?.cancel(); self.ready = true; self.busy = false
+                        self.deadline?.cancel(); self.ready = true; self.busy = false; self.retryDelay = 2
                     default: break
                     }
                 }
@@ -175,10 +216,19 @@ struct PairedTV: Codable {
             persist(p); notice = "Input mapping saved."
         } catch { notice = error.localizedDescription }
     }
-    func action(_ code: Int, label: String) {
-        guard !fixture, ready, let c = socket, let p = paired else { notice = "TV not connected. No command sent."; return }
-        let link = code == 243 ? p.ps5 : code == 245 ? p.mini : ""
-        do { send(try conversation.command(code:code,inputID:link.isEmpty ? nil : link),on:c,label:label) }
+    private func action(_ code: Int, link: String?, label: String) {
+        guard !fixture, ready, let c = socket, paired != nil else { notice = "TV not connected. No command sent."; return }
+        do { send(try conversation.command(code:code,inputID:link),on:c,label:label) }
         catch { notice = error.localizedDescription }
+    }
+    func usesPicker(_ a: DeskAction) -> Bool {
+        paired?.route(a)?.code == 178
+    }
+    func inputMenu() { action(178,link:nil,label:"Open TV inputs") }
+    /// All TV buttons and hotkeys use this same configured route.
+    func activate(_ a: DeskAction) {
+        guard paired != nil else { notice = "Pair your TV first. No command sent."; return }
+        guard let route = paired?.route(a) else { return }
+        action(route.code,link:route.link,label:route.label)
     }
 }

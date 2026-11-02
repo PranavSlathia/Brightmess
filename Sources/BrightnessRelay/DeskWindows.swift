@@ -1,7 +1,6 @@
 import AppKit
 import ApplicationServices
 import BrightnessCore
-import Carbon
 
 private func axValue(_ element: AXUIElement, _ key: String) -> CFTypeRef? {
     var value: CFTypeRef?
@@ -19,25 +18,10 @@ struct DeskWindow: Identifiable {
     @Published var notice = ""
     @Published var showing = false
     @Published var trusted = false
-    @Published var shortcutLabel = "Not assigned"
-    @Published var recording = false
+    private(set) var successfulMoves = 0
     private var destination: CGDirectDisplayID?
     private var lastExternal: NSRunningApplication?
     private var activationObserver: NSObjectProtocol?
-    private var hotkey: EventHotKeyRef?, eventHandler: EventHandlerRef?, monitor: Any?
-    private let pref = "Brightmess.WindowShortcut.v1"
-    private let defaults: UserDefaults
-    private let reserve: (UInt32,UInt32) -> EventHotKeyRef?
-    private let release: (EventHotKeyRef) -> Void
-    init(defaults: UserDefaults = .standard, reserve: @escaping (UInt32,UInt32) -> EventHotKeyRef? = { code,mods in
-        var key: EventHotKeyRef?
-        // A shared Carbon registration silently succeeds even if another process owns the chord.
-        let result = RegisterEventHotKey(code,mods,EventHotKeyID(signature:0x42524d57,id:1),
-            GetApplicationEventTarget(),OptionBits(kEventHotKeyExclusive),&key)
-        return result == noErr ? key : nil
-    }, release: @escaping (EventHotKeyRef) -> Void = { UnregisterEventHotKey($0) }) {
-        self.defaults = defaults; self.reserve = reserve; self.release = release
-    }
     var fixture = false
     var destinationName: String { screens.first { $0.id == destination }?.name ?? "this screen" }
     private struct Screen {
@@ -135,75 +119,34 @@ struct DeskWindow: Identifiable {
             })
         } catch { notice = error.localizedDescription; return }
         guard let to = screens.first(where:{ $0.id == id }) else { notice = "Destination disconnected."; return }
+        successfulMoves += 1
         notice = "Moved \(w.app) to \(to.name)."; focus = nil; showing = false; choices = []
         NSRunningApplication(processIdentifier:w.owner)?.activate(options: [])
         AXUIElementPerformAction(w.element,kAXRaiseAction as CFString)
     }
-    func shortcut() {
-        guard AXIsProcessTrusted() else { notice = "Window shortcut needs Accessibility."; NSSound.beep(); return }
-        let all = screens
-        guard all.count == 2, let w = current(), let other = all.first(where:{ $0.id != w.original }) else { NSSound.beep(); return }
-        move(w,to:other.id)
+    func toggle(captured: Bool) {
+        guard !fixture else { return }
+        guard AXIsProcessTrusted() else { notice = "Moving windows needs Accessibility."; NSSound.beep(); return }
+        guard let w = captured ? focus : current() else { notice = "Focus a normal app window first."; NSSound.beep(); return }
+        guard let other = WindowPlacement.otherDisplay(containing:w.original, connected:screens.map(\.id)) else {
+            notice = "Connect two separate displays to move a window between them."; NSSound.beep(); return
+        }
+        move(w,to:other)
     }
-    func installShortcut() {
+    func observeFocus() {
         lastExternal = NSWorkspace.shared.frontmostApplication
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(forName:NSWorkspace.didActivateApplicationNotification,object:nil,queue:.main) { [weak self] n in
             guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                   app.activationPolicy == .regular, app.processIdentifier != getpid() else { return }
             MainActor.assumeIsolated { self?.lastExternal = app }
         }
-        var event = EventTypeSpec(eventClass:OSType(kEventClassKeyboard),eventKind:UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _,e,ctx in
-            guard let e, let ctx else { return OSStatus(eventNotHandledErr) }
-            var hot = EventHotKeyID()
-            guard GetEventParameter(e,EventParamName(kEventParamDirectObject),EventParamType(typeEventHotKeyID),nil,
-                                    MemoryLayout<EventHotKeyID>.size,nil,&hot) == noErr, hot.signature == 0x42524d57, hot.id == 1 else { return OSStatus(eventNotHandledErr) }
-            let owner = Unmanaged<DeskWindows>.fromOpaque(ctx).takeUnretainedValue()
-            Task { @MainActor in owner.shortcut() }; return noErr
-        },1,&event,Unmanaged.passUnretained(self).toOpaque(),&eventHandler)
-        if let d = defaults.dictionary(forKey:pref), let code = d["code"] as? UInt32,
-           let mods = d["mods"] as? UInt32, let label = d["label"] as? String { bind(code,mods,label) }
     }
-    private func bind(_ code: UInt32,_ mods: UInt32,_ label: String) {
-        guard let next = reserve(code,mods) else {
-            notice = "Shortcut unavailable. Choose a different combination."; return
-        }
-        if let hotkey { release(hotkey) }
-        hotkey = next; shortcutLabel = label
-        defaults.set(["code":code,"mods":mods,"label":label],forKey:pref)
+    func close() { choices = []; focus = nil; showing = false }
+    func stop() {
+        if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
+        activationObserver = nil
     }
-    func record() {
-        stopRecording(); recording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching:.keyDown) { [weak self] e in
-            guard let self else { return e }
-            self.stopRecording()
-            if e.keyCode == 53 { return nil }
-            let f = e.modifierFlags
-            guard f.contains(.option) || f.contains(.control) || f.contains(.command) else { self.notice = "Include Control, Option or Command."; return nil }
-            let modifiers: [(NSEvent.ModifierFlags,Int,String)] = [(.control,controlKey,"⌃"),(.option,optionKey,"⌥"),(.shift,shiftKey,"⇧"),(.command,cmdKey,"⌘")]
-            let used = modifiers.filter { f.contains($0.0) }
-            self.bind(UInt32(e.keyCode),used.reduce(0) { $0 | UInt32($1.1) },used.map(\.2).joined()+(e.charactersIgnoringModifiers?.uppercased() ?? "Key"))
-            return nil
-        }
-    }
-    func stopRecording() { if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; recording = false }
-    func clearShortcut() {
-        stopRecording(); if let hotkey { release(hotkey) }; hotkey = nil
-        defaults.removeObject(forKey:pref); shortcutLabel = "Not assigned"
-    }
-    func close() { stopRecording(); choices = []; focus = nil; showing = false }
     #if DEBUG
-    static func checkShortcutConflict(_ defaults: UserDefaults) throws {
-        var released = 0
-        let fake = DeskWindows(defaults:defaults,reserve:{ code,_ in code == 10 ? OpaquePointer(bitPattern:1) : nil },
-                               release:{ _ in released += 1 })
-        guard fake.shortcutLabel == "Not assigned" else { throw TVError("Shortcut was enabled by default.") }
-        fake.bind(10,1,"Fixture A"); fake.bind(11,1,"Taken")
-        guard fake.shortcutLabel == "Fixture A", released == 0, fake.notice.contains("unavailable"),
-              defaults.dictionary(forKey:fake.pref)?["label"] as? String == "Fixture A" else { throw TVError("Shortcut collision replaced a binding.") }
-        fake.clearShortcut()
-        guard released == 1, defaults.object(forKey:fake.pref) == nil else { throw TVError("Shortcut did not clear.") }
-    }
     func loadFixture() {
         fixture = true; trusted = true; destination = 51000
         focus = DeskWindow(app:"Safari",title:"Fixture browser",owner:0,element:AXUIElementCreateSystemWide(),original:51001)

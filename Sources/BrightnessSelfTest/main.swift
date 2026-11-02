@@ -29,6 +29,11 @@ struct BrightnessSelfTest {
     }
 
     private static func checkWindowFit() throws {
+        try require(WindowPlacement.otherDisplay(containing:11,connected:[22,11]) == 22 &&
+                    WindowPlacement.otherDisplay(containing:22,connected:[22,11]) == 11,
+                    "Window toggle must reverse with the window, regardless of screen order")
+        try require(WindowPlacement.otherDisplay(containing:11,connected:[11]) == nil &&
+                    WindowPlacement.otherDisplay(containing:99,connected:[11,22]) == nil, "Do not guess another screen")
         let wide = CGRect(x: 100, y: -30, width: 1920, height: 1080)
         let tall = CGRect(x: -900, y: 25, width: 900, height: 1530)
         try require(WindowPlacement.fit(wide, from: wide, to: tall) == tall, "maximized window must fill portrait destination")

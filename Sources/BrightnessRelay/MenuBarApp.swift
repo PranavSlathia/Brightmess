@@ -50,7 +50,12 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         model.setKeyboardAccessHandler { [weak keyController] in
             keyController?.requestAccessibility()
         }
-        model.windows.installShortcut()
+        model.shortcuts.perform = { [weak self] action in
+            guard let self else { return }
+            if action == .move { self.model.windows.toggle(captured:self.popover.isShown) }
+            else { self.model.tv.activate(action); if !self.model.tv.ready { NSSound.beep() } }
+        }
+        model.shortcuts.tvNeeded = { [weak model] needed in model?.tv.keepForShortcuts(needed) }
         server.setUIStatusProvider { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return [:] }
@@ -59,6 +64,9 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
                 result["panelVisible"] = self.popover.isShown
                 result["tvPaired"] = self.model.tv.paired != nil
                 result["tvRemoteReady"] = self.model.tv.ready
+                result["deskActions"] = self.model.shortcuts.diagnostics
+                result["windowMoves"] = self.model.windows.successfulMoves
+                result["tvLastSent"] = self.model.tv.lastSent ?? NSNull() as Any
                 result["uiBuild"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? NSNull()
                 return result
             }
@@ -131,6 +139,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         NSApp.setActivationPolicy(.accessory)
         installStatusItem()
         installObservers()
+        model.windows.observeFocus()
+        model.shortcuts.start()
         keyController.start()
         signal(SIGTERM, SIG_IGN)
         let term = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
@@ -224,9 +234,10 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         model.refreshDisplays()
     }
 
-    @objc private func willSleep() { model.restoreColors() }
+    @objc private func willSleep() { model.restoreColors(); model.shortcuts.suspendInput(); model.tv.sleeping(true) }
     @objc private func didWake() {
         model.resumeColors()
+        model.tv.sleeping(false)
         keyController.start()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             self?.model.colorConfigurationChanged()
@@ -236,7 +247,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     func popoverDidClose(_ notification: Notification) {
-        model.setVisible(false); model.windows.close(); model.tv.close()
+        model.setVisible(false); model.shortcuts.cancelRecording(); model.windows.close(); model.tv.close()
     }
     private func openPopover() {
         guard let button = statusItem.button else { return }
@@ -261,6 +272,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        model.shortcuts.stop(); model.windows.stop(); model.tv.shutdown()
         model.restoreColors()
         keyController.stop()
     }
@@ -276,6 +288,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
 final class BrightnessMenuModel: ObservableObject {
     let windows = DeskWindows()
     let tv: TVRemote
+    let shortcuts: DeskShortcuts
+    @Published var actionsOpen = false
     @Published private(set) var displays: [ManagedDisplayState]
     @Published private(set) var receiverStatus = "Starting receiver…"
     @Published private(set) var sourceTitle = "Waiting for MacBook Air"
@@ -321,8 +335,13 @@ final class BrightnessMenuModel: ObservableObject {
     private var lastAmbient: AmbientSample?
     private var lastColourPacketAt: Date?
 
-    init(server: RelayHTTPServer, fixture: Bool = false) {
+    init(server: RelayHTTPServer, fixture: Bool = false, shortcutDefaults: UserDefaults = .standard) {
         tv = TVRemote(fixture:fixture)
+        #if DEBUG
+        shortcuts = fixture ? DeskShortcuts.fixture(defaults:shortcutDefaults) : DeskShortcuts(defaults:shortcutDefaults)
+        #else
+        shortcuts = DeskShortcuts(defaults:shortcutDefaults)
+        #endif
         windows.fixture = fixture
         self.server = server
         self.coordinator = server.displayCoordinator

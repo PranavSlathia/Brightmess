@@ -31,8 +31,8 @@ plutil -insert CFBundleIdentifier -string dev.pranav.BrightnessRelay "$INFO"
 plutil -insert CFBundleName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundleDisplayName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
-plutil -insert CFBundleShortVersionString -string 0.9.0 "$INFO"
-plutil -insert CFBundleVersion -string 10 "$INFO"
+plutil -insert CFBundleShortVersionString -string 0.9.1 "$INFO"
+plutil -insert CFBundleVersion -string 11 "$INFO"
 plutil -insert NSLocalNetworkUsageDescription -string "Find your selected Android TV and send input commands on your local network." "$INFO"
 plutil -insert NSBonjourServices -json '["_androidtvremote2._tcp"]' "$INFO"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$INFO"
@@ -113,17 +113,17 @@ fi
 if launchctl bootstrap "gui/$(id -u)" "$PLIST"; then
   for attempt in {1..45}; do
     if "$HOME/.local/bin/brightness-relay" status --host 127.0.0.1 2>/dev/null |
-        plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx '10'; then
-      print "BRIGHTMESS receiver build 10 verified."
+        plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx '11'; then
+      print "BRIGHTMESS receiver build 11 verified."
       break
     fi
     sleep 2
   done
 fi
 if ! "$HOME/.local/bin/brightness-relay" status --host 127.0.0.1 2>/dev/null |
-     plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx '10'; then
+     plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx '11'; then
   restore_on_failure
   print -u2 "Receiver did not start; see $BACKUP"; exit 1
 fi
 trap - ZERR
-echo "BRIGHTMESS 0.9.0 installed. Previous app and launch settings: $BACKUP"
+echo "BRIGHTMESS 0.9.1 installed. Previous app and launch settings: $BACKUP"

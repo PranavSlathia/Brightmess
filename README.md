@@ -18,8 +18,8 @@ not verified.
 
 ## Menu-bar controls
 
-Click the paired-screen menu-bar icon to open **Light desk** (Mini 0.9.0,
-build 10). Each illustration follows its screen's applied brightness. Click
+Click the paired-screen menu-bar icon to open **Light desk** (Mini 0.9.1,
+build 11). Each illustration follows its screen's applied brightness. Click
 the artwork or **Details** for exact readings and calibration. This release
 does not require an update to an existing 0.8 Air helper.
 
@@ -27,10 +27,27 @@ does not require an update to an existing 0.8 Air helper.
 
 **Move windows:** Open Light desk on the destination monitor. **Bring [app] here**
 moves the window you were using; **Choose window…** lists other eligible windows
-by app, title and screen. This works without changing the TV input. In **Desk
-details → Move window**, record an optional shortcut to send the focused window
-to the other display. Allow Accessibility for the Mini app. True full-screen
+by app, title and screen. **Move to other screen** sends a window in either
+direction, based on which display actually contains it. This changes no TV
+input. Allow Accessibility for the Mini app. True full-screen
 windows must exit full screen first. Screen Recording is not needed.
+
+**Shortcuts & icons:** click this control at the bottom of Light desk. Click
+an action's symbol to change its icon, or click its key field to record a new
+combination. Esc cancels; × clears only that action. **Use suggested keys**
+fills unassigned actions without overwriting existing shortcuts:
+
+| Keys (Control + Option + Command) | Action |
+| --- | --- |
+| ⌃⌥⌘M | Move the focused Mac window to the other connected display. Press again to move it back. |
+| ⌃⌥⌘1 | Select the TV's configured PS5 input (HDMI 1 on this desk). This does not power on the PS5. |
+| ⌃⌥⌘2 | Select the TV's configured Mac mini input (HDMI 3 on this desk). |
+
+Smart TV Home stays a clickable button with a configurable icon, not a
+global shortcut. The three shortcuts work with the menu closed. An active TV
+shortcut keeps only the paired remote session available; a shortcut pressed
+while disconnected is not queued. No Spotlight setting changes.
+See the [shortcut editor preview](docs/shortcuts-and-icons.png).
 
 **Switch TV inputs:** With the Mini and TV on the same LAN, choose **Pair
 TV** on the TV card, select the TV, and enter its on-screen code into
@@ -39,7 +56,7 @@ ID, open **Set up → Configure HDMI fallback…**, enter the **full** ID for
 that port, turn **uses input chooser** off for that button, and save.
 On our G07, the TV's MagiConnect service supplied the ID over Wi-Fi; the
 already-paired Android TV remote connection sent the input link. Automatic
-discovery of port IDs is **not** part of build 10. A button with an ellipsis
+discovery of port IDs is **not** part of this release. A button with an ellipsis
 requests the TV's input menu instead; this TCL ignored that request. See the
 [tested mapping](research/LIGHT-DESK-0.9.md#verified-return-to-hdmi-3-over-wi-fi)
 before trying any fallback. **Command sent** is not readback of the active
@@ -243,9 +260,9 @@ sensor validity/expiry, backwards compatibility, authenticated and replay-safe
 packets, keyboard steps and disconnect policy. The Swift Testing suite remains
 under Tests/; the current Command Line Tools lacks that testing module.
 
-The Mini's bundle version is **0.9.0**, while the compatible receiver API
+The Mini's bundle version is **0.9.1**, while the compatible receiver API
 still reports **0.8.0**. In `status`, check `controls.uiBuild` for the Mini
-build (`10`), and `sourceMode` for the Air's mode. Examples:
+build (`11`), and `sourceMode` for the Air's mode. Examples:
 
 ```sh
 brightness-relay status --host 127.0.0.1

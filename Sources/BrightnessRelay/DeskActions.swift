@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DeskWindowsView: View {
     @ObservedObject var windows: DeskWindows
+    @ObservedObject var shortcuts: DeskShortcuts
     let requestAccess: () -> Void
     var body: some View {
         VStack(alignment:.leading,spacing:6) {
@@ -10,8 +11,17 @@ struct DeskWindowsView: View {
                 Spacer()
                 if !windows.trusted { Button("Enable Accessibility",action:requestAccess) }
                 else {
-                    if let w = windows.focus, windows.canBring { Button("Bring "+w.app+" here") { windows.bring(w) } }
                     Button(windows.showing ? "Close list" : "Choose window…") { windows.list() }
+                }
+            }
+            if windows.trusted {
+                HStack {
+                    Button { windows.toggle(captured:true) } label: {
+                        Label("Move to other screen",systemImage:shortcuts.symbol(.move))
+                    }.disabled(windows.focus == nil).help(shortcuts.binding(.move)?.label ?? "Move the focused window to the other display")
+                    if let w = windows.focus, windows.canBring {
+                        Button("Bring "+w.app+" here") { windows.bring(w) }
+                    }
                 }
             }
             if windows.showing {
@@ -28,14 +38,46 @@ struct DeskWindowsView: View {
     }
 }
 
-struct WindowShortcutView: View {
-    @ObservedObject var windows: DeskWindows
+struct DeskShortcutEditor: View {
+    @ObservedObject var shortcuts: DeskShortcuts
     var body: some View {
-        HStack {
-            Label("Move window",systemImage:"keyboard"); Spacer()
-            Button(windows.recording ? "Press keys… (Esc cancels)" : windows.shortcutLabel) { windows.record() }
-            if windows.shortcutLabel != "Not assigned" { Button("Clear") { windows.clearShortcut() } }
-        }.controlSize(.small).disabled(windows.fixture)
+        VStack(alignment:.leading,spacing:8) {
+            HStack {
+                Text("Shortcuts & icons").font(.headline); Spacer()
+                Button("Use suggested keys") { shortcuts.suggestions() }
+                    .help("Fill only unassigned actions: ⌃⌥⌘M, ⌃⌥⌘1, ⌃⌥⌘2. Smart TV stays click-only.")
+            }
+            Text("Choose an icon or record a global shortcut. Esc cancels recording.").font(.caption).foregroundStyle(.secondary)
+            ForEach(DeskAction.allCases) { action in
+                HStack {
+                    Menu {
+                        ForEach(DeskAction.symbols, id:\.0) { item in
+                            Button { shortcuts.changeIcon(action,item.0) } label: { Label(item.1,systemImage:item.0) }
+                        }
+                        Divider()
+                        Button("Restore default icon") { shortcuts.changeIcon(action,action.symbol) }
+                    } label: { Image(systemName:shortcuts.symbol(action)).frame(width:24) }
+                    .fixedSize().accessibilityLabel("Icon for "+action.name)
+                    .help("Change "+action.name+" icon")
+                    Text(action.name)
+                    Spacer()
+                    if action == .home {
+                        Text("Button only").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        if shortcuts.unavailable.contains(action) { Image(systemName:"exclamationmark.triangle").help("Shortcut unavailable") }
+                        Button(shortcuts.recording == action ? "Press keys…" : shortcuts.binding(action)?.label ?? "Record…") { shortcuts.record(action) }
+                            .accessibilityLabel("Record shortcut for "+action.name)
+                            .accessibilityValue(shortcuts.binding(action)?.label ?? "Unassigned")
+                        if shortcuts.binding(action) != nil {
+                            Button { shortcuts.clear(action) } label: { Image(systemName:"xmark.circle") }
+                                .accessibilityLabel("Clear shortcut for "+action.name)
+                        }
+                    }
+                }
+            }
+            if !shortcuts.notice.isEmpty { Text(shortcuts.notice).font(.caption) }
+        }.controlSize(.small).padding(12).frame(maxWidth:.infinity,alignment:.leading)
+        .background(.secondary.opacity(0.08),in:RoundedRectangle(cornerRadius:8))
     }
 }
 
@@ -51,6 +93,7 @@ struct WindowShortcutView: View {
 
 struct TVStrip: View {
     @ObservedObject var remote: TVRemote
+    @ObservedObject var shortcuts: DeskShortcuts
     let display: String
     @StateObject private var form = TVForm()
     var body: some View {
@@ -66,9 +109,7 @@ struct TVStrip: View {
                 }
             }
             HStack {
-                source("PS5","gamecontroller",243,remote.paired?.ps5Picker == true)
-                source("Mac mini","desktopcomputer",245,remote.paired?.miniPicker == true)
-                source("Smart TV","house",3,false)
+                source(.ps5); source(.mac); source(.home)
             }
             Text(remote.notice).font(.caption).foregroundStyle(.secondary)
             if form.setup {
@@ -84,7 +125,7 @@ struct TVStrip: View {
                     }
                 }
                 if let p = remote.paired {
-                    Button("Open TV inputs") { remote.action(178,label:"Open TV inputs") }.disabled(!remote.ready)
+                    Button("Open TV inputs") { remote.inputMenu() }.disabled(!remote.ready)
                     Button(form.mapping ? "Close input mapping" : "Configure HDMI fallback…") {
                         form.mapping.toggle(); form.ps5 = p.ps5; form.mini = p.mini; form.picker1 = p.ps5Picker; form.picker3 = p.miniPicker
                     }
@@ -101,9 +142,10 @@ struct TVStrip: View {
         }.padding(.horizontal,12).padding(.bottom,10).controlSize(.small)
     }
     private func submit() { remote.verify(form.code); form.code = "" }
-    private func source(_ title: String,_ icon: String,_ key: Int,_ picker: Bool) -> some View {
-        Button { remote.action(picker ? 178 : key,label:picker ? "Open TV inputs" : title) } label: {
-            Label(title+(picker ? "…" : ""),systemImage:icon)
-        }.disabled(!remote.ready).help(picker ? "Open TV input chooser" : title)
+    private func source(_ a: DeskAction) -> some View {
+        let picker = remote.usesPicker(a)
+        return Button { remote.activate(a) } label: {
+            Label(a.name+(picker ? "…" : ""),systemImage:shortcuts.symbol(a))
+        }.disabled(!remote.ready).help([picker ? "Open TV input chooser" : a.name,shortcuts.binding(a)?.label].compactMap{$0}.joined(separator:" · "))
     }
 }

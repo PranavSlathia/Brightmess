@@ -1,5 +1,15 @@
 # BRIGHTMESS release history
 
+## 0.9.1 · Shortcuts & icons on the Mini (build 11)
+
+- Light desk has an editor for the move-window, PS5 and Mac mini global
+  shortcuts and all four action icons. Smart TV Home remains click-only.
+  The suggested keys are ⌃⌥⌘M, ⌃⌥⌘1 and ⌃⌥⌘2. Existing move bindings
+  migrate, and an unavailable key does not displace a working binding.
+- Window movement uses the focused window's display in either direction.
+  TV shortcuts use the same paired input mappings as the buttons, without
+  opening the menu or replaying an offline request. No Air update is needed.
+
 ## 0.9.0 · Light desk on the Mini (build 10) · 2 November 2026
 
 - **TV inputs:** pair a TV from the Mini and request Home or a mapped HDMI

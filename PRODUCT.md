@@ -25,7 +25,24 @@ See the [physical test record](research/LIGHT-DESK-0.9.md#verified-return-to-hdm
 
 An appropriate next feature is **Discover inputs**: show the ports reported
 by the selected TV, let the user name them, then verify the picture once.
-Build 10 supports saving a mapping; it does not perform that discovery.
+The current app supports saving a mapping; it does not perform that discovery.
+
+## Personal controls
+
+Light desk lets the user change each action's icon and record global shortcuts
+for the window toggle, PS5 and Mac mini. The window toggles between the two
+displays independently of the pointer. Smart TV Home stays click-only. Never
+claim a shortcut is active when another app owns the keys.
+
+## Future product direction (not implemented)
+
+Package a **Sender** for the computer with a native display or room sensors,
+and a **Receiver** for the computer driving the destination displays. For this
+desk those are the Air and Mini respectively, not software installed on the
+Samsung monitor or TV. Offer a paired installer experience without private ZIPs
+or scripts. Add TV platforms incrementally, with per-device capability discovery
+and verified input switching before advertising support. No additional brands,
+commercial packaging, or TV-side installers are part of the shortcuts release.
 
 ## Character
 
