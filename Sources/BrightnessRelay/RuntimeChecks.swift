@@ -33,6 +33,18 @@ enum RuntimeChecks {
     }
 
     @MainActor static func run() async throws {
+        try WindowGeometryChecks.run()
+        try TVIdentityChecks.run()
+        try TVMappingChecks.run()
+        try await TVReconnectChecks.run()
+        try DDCReadbackChecks.run()
+        try await HardwareReadbackChecks.run()
+        try await SamsungSourceChecks.run()
+        try DisplayIdentityChecks.run()
+        try DisplayConnectionChecks.run()
+        try DisplayRecoveryChecks.run()
+        try await DeskShelfChecks.run()
+        try await BringHereChecks.run()
         func expect(_ test: @autoclosure () -> Bool, _ message: String) throws {
             if !test() { throw Failed.check(message) }
         }
@@ -45,7 +57,17 @@ enum RuntimeChecks {
         }
         let suite = "dev.pranav.relay.test." + UUID().uuidString
         let prefs = UserDefaults(suiteName: suite)!
-        try DeskWindows.checkShortcutConflict(prefs)
+        try DeskShortcuts.check(prefs)
+        var paired = PairedTV(service:"Fixture",display:"Screen",pin:Data(),ps5:"vendor/.Input/HW1",mini:"vendor/.Input/HW3")
+        try expect(paired.route(.ps5)?.link == paired.ps5 && paired.route(.mac)?.link == paired.mini && paired.route(.home)?.code == 3 &&
+                   paired.route(.move) == nil, "shortcut and button routes must be distinct")
+        paired.ps5Picker = true
+        try expect(paired.route(.ps5)?.code == 178 && paired.route(.ps5)?.link == nil && paired.route(.mac)?.link == paired.mini, "picker preference crossed inputs")
+        try expect(TVRemote.needsSession(panel:false,keys:true,paired:true,asleep:false) &&
+                   !TVRemote.needsSession(panel:false,keys:false,paired:true,asleep:false) &&
+                   !TVRemote.needsSession(panel:false,keys:true,paired:false,asleep:false) &&
+                   !TVRemote.needsSession(panel:true,keys:true,paired:true,asleep:true), "TV session demand/sleep policy")
+        print("Shortcut checks passed: migration, editable icons, collisions, release/repeat, TV routing and closed-menu demand.")
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
         defer { prefs.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: tmp) }
         let driver = Displays()

@@ -132,3 +132,23 @@ is visible. Physical observation was the acceptance check.
 References: [MagiConnect wire protocol](https://github.com/DusKing1/ha-tcl-tv/blob/main/docs/protocol.md),
 [Android passthrough URI API](https://developer.android.com/reference/android/media/tv/TvContract#buildChannelUriForPassthroughInput(java.lang.String)),
 and [a remote implementation of TCL input links](https://github.com/falghamdi125/Google-TV-Remote-for-Windows/blob/main/gtvremote/inputs.py).
+
+### Build 11: global shortcuts and action icons
+
+On this Mini, **⌃⌥⌘M** moves the focused window between the two displays,
+**⌃⌥⌘1** targets the TV-reported HDMI 1 input, and **⌃⌥⌘2** targets the
+previously verified HDMI 3 input. Smart TV Home stays button-only. Edit the
+bindings or icons through **Shortcuts & icons** at the bottom of Light desk.
+Fresh installs leave keys unassigned until chosen; these were enabled on
+this desk at the user's request. No Spotlight setting was changed.
+
+The installed receiver reported all three global registrations, a ready TV
+remote with the popover closed, and live Air sync. Its window action recorded
+ten presses and ten destination-screen readbacks. The user confirmed the Mac
+desktop returned during the HDMI 3 check; the key-specific counter did not
+independently attribute that return to a physical keypress. HDMI 1 was
+configured from a fresh input-list read, not physically tested with the PS5.
+In an isolated window the icon picker and shortcut recorder both updated
+the corresponding control. The release build, 25 core test groups and
+debug simulation passed; the Swift Testing target could not compile on
+this CLT because its `Testing` module is absent.

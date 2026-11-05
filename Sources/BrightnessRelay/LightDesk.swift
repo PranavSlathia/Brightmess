@@ -13,88 +13,85 @@ enum DeskLayout {
 struct BrightnessPopoverView: View {
     @ObservedObject var model: BrightnessMenuModel
     var height: CGFloat = DeskLayout.height(for: nil)
-    @Environment(\.colorScheme) private var scheme
-    private var dark: Bool { scheme == .dark }
 
+    private var displays:[ManagedDisplayState] {
+        model.displays.sorted {
+            let l=$0.display.desktopX ?? .greatestFiniteMagnitude,r=$1.display.desktopX ?? .greatestFiniteMagnitude
+            return l==r ? $0.id<$1.id:l<r
+        }
+    }
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing:0) {
             header
-            if let notice = model.syncNotice {
-                Label(notice, systemImage: "info.circle").font(.caption).padding(.vertical, 4)
-            }
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        DeskWindowsView(windows:model.windows, requestAccess:model.requestKeyboardAccess)
-                        if model.displays.isEmpty {
-                            ContentUnavailableView("No external displays", systemImage: "display",
-                                description: Text("Connect a display, then choose Re-detect in Desk details."))
-                                .frame(maxWidth: .infinity, minHeight: 155)
+                    VStack(alignment:.leading,spacing:0) {
+                        SourceDeckTV(remote:model.tv,shortcuts:model.shortcuts,displays:displays)
+                        DeskWindowsView(windows:model.windows,shortcuts:model.shortcuts,requestAccess:model.requestKeyboardAccess,openPicker:model.openWindowPicker)
+                        levels
+                        if let target = model.samsungSources.target, !displays.contains(where: { $0.id == target.id }) {
+                            SamsungSourceControls(sources: model.samsungSources, shortcuts: model.shortcuts, now: model.readbackNow)
+                                .padding(16)
                         }
-                        ForEach(model.displays) { state in
-                            DeskScreenStrip(model: model, state: state).id(state.id)
+                        if let id=model.detailedDisplay,let state=displays.first(where:{$0.id==id}){
+                            DeskScreenStrip(model:model,state:state,detailsOnly:true).id("detail-"+id)
                         }
-                        if let pair = model.tv.paired, !model.displays.contains(where: { $0.id == pair.display }) {
-                            TVStrip(remote:model.tv,display:pair.display)
-                        }
-                        if model.toolsOpen { tools.id("desk.tools") }
+                        if model.actionsOpen {DeskShortcutEditor(shortcuts:model.shortcuts).id("desk.shortcuts")}
+                        if model.toolsOpen {tools.id("desk.tools")}
                     }
-                    .padding(12)
                 }
-                .onChange(of: model.toolsOpen) { _, open in
-                    if open { proxy.scrollTo("desk.tools", anchor: .bottom) }
+                .onChange(of:model.toolsOpen){_,open in if open{proxy.scrollTo("desk.tools",anchor:.bottom)}}
+                .onChange(of:model.actionsOpen){_,open in
+                    if open {proxy.scrollTo("desk.shortcuts",anchor:.bottom)} else {model.shortcuts.cancelRecording()}
                 }
-                .onChange(of: model.detailedDisplay) { _, id in
-                    if let id { proxy.scrollTo(id, anchor: .top) }
+                .onChange(of:model.detailedDisplay){_,id in if let id{proxy.scrollTo("detail-"+id,anchor:.top)}}
+                .onAppear {
+                    if model.actionsOpen {DispatchQueue.main.async {proxy.scrollTo("desk.shortcuts",anchor:.bottom)}}
+                    else if let id = model.detailedDisplay { DispatchQueue.main.async { proxy.scrollTo("detail-" + id, anchor: .top) } }
                 }
             }
             footer
-        }
-        .frame(width: DeskLayout.width, height: height)
-        .background(DeskPaint.paper(dark))
+        }.frame(width:DeskLayout.width,height:height).background(DeckPaint.ground)
+        .foregroundStyle(DeckPaint.ink).tint(DeckPaint.accent)
     }
-
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 7) {
-                Image(nsImage: DeskMark.image(.linked)).renderingMode(.template)
-                    .foregroundStyle(DeskPaint.cream).accessibilityHidden(true)
-                Text("BRIGHTMESS").font(.system(size: 10, weight: .bold)).tracking(1.5)
-            }
-            Text("Light desk")
-                .font(.system(size: 35, weight: .bold, design: .serif)).tracking(-1.25)
-                .accessibilityAddTraits(.isHeader)
-            HStack(spacing: 7) {
-                Image(systemName: "laptopcomputer")
-                Text("MacBook Air").fontWeight(.semibold)
-                Text("·").accessibilityHidden(true)
-                Text(model.deskStatus)
-                    .fontWeight(.medium)
-            }
-            .font(.system(size: 12))
-            .accessibilityElement(children: .combine)
-        }
-        .foregroundStyle(DeskPaint.cream)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 19).padding(.vertical, 14)
-        .background { ZStack { DeskPaint.ink; DeskHorizon() } }
-        .overlay(alignment: .bottomTrailing) {
-            Button { model.requestAirSync() } label: {
-                Label(model.isSyncing ? "Syncing" : (model.justSynced ? "Synced" : "Sync now"),
-                      systemImage: model.justSynced ? "checkmark" : "arrow.clockwise")
-                    .font(.system(size: 11, weight: .semibold))
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(DeskPaint.ink, in: Capsule())
-                    .overlay(Capsule().stroke(DeskPaint.mint.opacity(0.62), lineWidth: 1))
-            }
-            .buttonStyle(.plain).foregroundStyle(DeskPaint.cream).disabled(model.isSyncing)
-            .help("Request a fresh reading from the Air")
-            .padding(.trailing, 15).padding(.bottom, 9)
-        }
+        HStack(spacing:7) {
+            Image(nsImage:DeskMark.image(.linked)).renderingMode(.original).accessibilityHidden(true)
+            Text("BRIGHTMESS").font(.system(size:12,weight:.bold)).tracking(0.7)
+            Spacer(minLength:2)
+            Text(model.deskStatus=="Live" ? "Air live":model.deskStatus)
+                .lineLimit(1).font(.system(size:11,weight:.medium))
+                .help(model.sourceTitle+" · "+model.sourceAge)
+            Button {model.requestAirSync()} label:{
+                Label(model.isSyncing ? "Syncing" : model.justSynced ? "Synced":"Sync now",systemImage:"arrow.clockwise")
+            }.buttonStyle(.plain).font(.system(size:11,weight:.semibold)).disabled(model.isSyncing)
+        }.padding(.horizontal,16).frame(height:36)
+        .foregroundStyle(DeckPaint.cream).background(DeckPaint.forest)
+        .overlay(alignment:.bottom){Rectangle().fill(DeckPaint.cream.opacity(0.2)).frame(height:1)}
     }
-
+    private var levels:some View {
+        VStack(alignment:.leading,spacing:12){
+            HStack{
+                Text("Display levels").font(.system(size:15,weight:.bold));Spacer()
+                Text("\(displays.filter{$0.connectionState.isConnected}.count) connected").font(.caption).foregroundStyle(DeckPaint.muted)
+            }
+            if let notice=model.syncNotice{Label(notice,systemImage:"info.circle").font(.caption)}
+            if displays.isEmpty {
+                ContentUnavailableView("No external displays",systemImage:"display",description:Text("Connect a display or choose Re-detect in Desk details."))
+            } else {
+                LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())],alignment:.leading,spacing:12) {
+                    ForEach(displays){state in DeskScreenStrip(model:model,state:state)}
+                }
+            }
+        }.padding(.horizontal,16).padding(.vertical,12).frame(maxWidth:.infinity,minHeight:195,alignment:.topLeading)
+        .overlay(alignment:.top){Divider()}
+    }
     private var footer: some View {
         HStack {
+            Button { model.actionsOpen.toggle() } label: {
+                Label("Shortcuts & icons",systemImage:"keyboard")
+            }.accessibilityValue(model.actionsOpen ? "Expanded" : "Collapsed")
+            Spacer()
             Button { model.toolsOpen.toggle() } label: {
                 Label(model.toolsOpen ? "Close desk details" : "Desk details", systemImage: "slider.horizontal.3")
             }
@@ -108,21 +105,20 @@ struct BrightnessPopoverView: View {
                     .disabled(!model.canReconnect)
                     .help(model.canReconnect ? "Reconnect all recorded screens" : "Reconnection is unavailable or already in progress")
             } else {
-                Label(model.displays.isEmpty ? "No screens" : "All connected", systemImage: "link")
-                    .foregroundStyle(.secondary).font(.caption)
+                Text(model.displays.isEmpty ? "No screens" : "Displays connected")
+                    .foregroundStyle(DeckPaint.muted).font(.caption)
             }
         }
         .font(.system(size: 12, weight: .medium))
         .buttonStyle(.borderless)
         .padding(.horizontal, 16).padding(.vertical, 11)
-        .background(DeskPaint.surface(dark))
+        .background(DeckPaint.ground)
         .overlay(alignment: .top) { Divider() }
     }
 
     private var tools: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Source details").font(.headline)
-            WindowShortcutView(windows:model.windows)
             Text(model.sourceTitle + " · " + model.sourceAge)
             Text(model.ambientDetail)
             Text(model.receiverStatus)
@@ -137,25 +133,34 @@ struct BrightnessPopoverView: View {
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(DeskPaint.surface(dark), in: RoundedRectangle(cornerRadius: 9))
+        .background(DeckPaint.ground, in: RoundedRectangle(cornerRadius: 9))
+    }
+}
+
+private struct SourceDeckTV: View {
+    @ObservedObject var remote:TVRemote
+    @ObservedObject var shortcuts:DeskShortcuts
+    let displays:[ManagedDisplayState]
+    var body:some View {
+        if let paired=remote.paired {
+            TVStrip(remote:remote,shortcuts:shortcuts,display:paired.display)
+        } else if let candidate=displays.first(where:{$0.display.shape == .television}) {
+            TVStrip(remote:remote,shortcuts:shortcuts,display:candidate.id)
+        } else {
+            Text("No paired TV").font(.headline).padding().frame(maxWidth:.infinity,alignment:.leading)
+                .foregroundStyle(DeckPaint.cream).background(DeckPaint.forest)
+        }
     }
 }
 
 private struct DeskScreenStrip: View {
     @ObservedObject var model: BrightnessMenuModel
     let state: ManagedDisplayState
-    @Environment(\.colorScheme) private var scheme
+    var detailsOnly=false
     private var connected: Bool { state.connectionState.isConnected }
     private var expanded: Bool { model.detailedDisplay == state.id }
     private var title: String {
         state.display.vendorID == 0x4c2d && state.display.name == "LU28R55" ? "Samsung" : state.display.name
-    }
-    private var kindName: String {
-        switch state.display.shape {
-        case .portraitMonitor: return "Portrait monitor"
-        case .monitor: return "Monitor"
-        case .television: return "Television"
-        }
     }
     private var connectionLabel: String {
         switch state.connectionState {
@@ -177,12 +182,18 @@ private struct DeskScreenStrip: View {
             (!connected || model.displays.filter { $0.connectionState.isConnected }.count > 1)
     }
     private var level: UInt16? { model.desiredSlider[state.id] ?? state.brightness }
+    private var hardwareAge: String {
+        guard let at = state.lastReadAt else { return "not read yet" }
+        let seconds = max(0, Int(model.readbackNow.timeIntervalSince(at)))
+        return seconds < 1 ? "now" : seconds < 60 ? "\(seconds)s ago" : "\(seconds / 60)m ago"
+    }
     private var output: String {
         guard connected else { return "Disconnected" }
         guard let b = state.brightness else { return "Not available" }
-        switch state.brightnessOrigin {
+        switch state.readingKind(at: model.readbackNow) {
         case .lastSet: return "\(b)% · last hardware command"
-        case .liveHardware: return "\(b)% · hardware readback"
+        case .liveHardware: return "\(b)% · hardware readback · \(hardwareAge)"
+        case .staleHardware: return "\(b)% · older hardware reading · \(hardwareAge)"
         case .liveSoftware: return "\(b)% · software dimming"
         case .unavailable: return "Not available"
         }
@@ -193,85 +204,61 @@ private struct DeskScreenStrip: View {
         return e
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 13) {
-                Button { model.toggleDetails(state.id) } label: {
-                    DeskDeviceArt(kind: state.display.shape, brightness: state.brightness, connected: connected)
-                        .frame(width: 114, height: 88)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(expanded ? "Hide" : "Show") details for \(title)")
-                .help("Toggle display details for \(state.display.name)")
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(title).font(.system(size: 19, weight: .bold, design: .rounded)).lineLimit(1)
-                        Spacer(minLength: 2)
-                        Button { model.toggleDetails(state.id) } label: {
-                            HStack(spacing: 3) {
-                                Text("Details")
-                                Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            }.font(.caption).frame(minHeight: 23)
-                        }
-                        .buttonStyle(.borderless).help("Display details")
-                        .accessibilityLabel("\(expanded ? "Hide" : "Show") details for \(state.display.name)")
-                        .accessibilityValue(expanded ? "Expanded" : "Collapsed")
-                    }
-                    Text(connected ? kindName : "\(kindName) · Disconnected")
-                        .font(.caption).foregroundStyle(.secondary)
-                    HStack(spacing: 4) {
-                        stepButton(.down, "minus", "Dim")
-                        Slider(value: Binding(
-                            get: { Double(level ?? 0) },
-                            set: { model.sliderChanged(displayID: state.id, value: $0) }
-                        ), in: 0...100, onEditingChanged: { editing in
-                            if editing { model.sliderBegan(state.id) } else { model.sliderEnded(displayID: state.id) }
-                        })
-                        .controlSize(.small)
-                        .tint(scheme == .dark ? DeskPaint.mint : DeskPaint.spruce)
-                        .accessibilityLabel("Brightness for \(state.display.name)")
-                        .accessibilityValue(level.map { "\($0) percent" } ?? "Unavailable")
-                        stepButton(.up, "plus", "Brighten")
-                    }
-                    .disabled(!connected)
-                    .help(connected ? output : "This screen is disconnected.")
-                }
-            }
-            .padding(.horizontal, 12).padding(.top, 11)
-            HStack(spacing: 10) {
-                Toggle("Follow Air", isOn: Binding(get: { state.followsAutomatic },
-                    set: { model.setFollowsAutomatic($0, displayID: state.id) }))
-                    .toggleStyle(.switch).controlSize(.small)
-                    .tint(scheme == .dark ? DeskPaint.mint : DeskPaint.spruce).disabled(!connected)
-                    .accessibilityLabel("Follow Air on \(state.display.name)")
-                Spacer()
-                Button { model.toggleConnection(displayID: state.id) } label: {
-                    Label(connected && !mayConnect && model.connectionControlAvailable ? "Last screen" : connectionLabel,
-                          systemImage: connected ? (mayConnect ? "eject" : "lock") : "cable.connector")
-                }
-                .buttonStyle(.bordered).controlSize(.small).disabled(!mayConnect)
-                .accessibilityLabel("\(connectionLabel) \(state.display.name)")
-                .help(connectionHint)
-            }
-            .font(.system(size: 12, weight: .semibold))
-            .padding(.horizontal, 13).padding(.top, 5).padding(.bottom, 10)
-            if state.display.shape == .television && (model.tv.paired == nil || model.tv.paired?.display == state.id) {
-                TVStrip(remote:model.tv,display:state.id)
-            }
-            if let error = frontError {
-                Label(error, systemImage: "exclamationmark.triangle").font(.caption)
-                    .padding(.horizontal, 12).padding(.bottom, 8)
-            }
-            if expanded {
-                Divider()
-                details.padding(12)
-            }
+    private var origin:String {
+        guard connected else{return "Disconnected"}
+        if state.brightness==nil {return "Not available"}
+        switch state.readingKind(at: model.readbackNow) {
+        case .lastSet:return "\(state.brightness!)% · last set"
+        case .liveHardware:return "\(state.brightness!)% · read \(hardwareAge)"
+        case .staleHardware:return "Older hardware reading"
+        case .liveSoftware:return "Software dimming"
+        case .unavailable:return "Not available"
         }
-        .background(DeskPaint.surface(scheme == .dark), in: RoundedRectangle(cornerRadius: 11))
-        .overlay(RoundedRectangle(cornerRadius: 11).stroke(.primary.opacity(0.10), lineWidth: 1).allowsHitTesting(false))
     }
-
+    var body:some View {
+        if detailsOnly { details.padding(14).frame(maxWidth:.infinity,alignment:.leading) }
+        else {
+            VStack(alignment:.leading,spacing:9) {
+                HStack(spacing:6) {
+                    Button { model.toggleDetails(state.id) } label:{DeckDisplayGlyph(display:state.display)}
+                        .buttonStyle(.plain).accessibilityLabel("Details for "+title)
+                    VStack(alignment:.leading,spacing:1) {
+                        Text(title).font(.system(size:14,weight:.bold)).lineLimit(1)
+                        Text(origin).font(.system(size:11)).foregroundStyle(DeckPaint.muted)
+                    }
+                }
+                HStack(spacing:4) {
+                    stepButton(.down,"minus","Dim")
+                    Slider(value:Binding(get:{Double(level ?? 0)},set:{model.sliderChanged(displayID:state.id,value:$0)}),
+                           in:0...100,onEditingChanged:{editing in
+                        if editing {model.sliderBegan(state.id)} else {model.sliderEnded(displayID:state.id)}
+                    }).controlSize(.small).accessibilityLabel("Brightness for "+title)
+                    .accessibilityValue(level.map{"\($0) percent"} ?? "Unavailable")
+                    stepButton(.up,"plus","Brighten")
+                }.disabled(!connected).help(output)
+                HStack(spacing:3){
+                    Toggle("Follow Air",isOn:Binding(get:{state.followsAutomatic},set:{model.setFollowsAutomatic($0,displayID:state.id)}))
+                        .toggleStyle(.switch).controlSize(.mini).disabled(!connected).accessibilityLabel("Follow Air on "+title)
+                    Spacer(minLength:0)
+                    Button(expanded ? "Close":"Details"){model.toggleDetails(state.id)}
+                        .buttonStyle(.borderless).accessibilityLabel("Display details for "+title)
+                        .accessibilityValue(expanded ? "Expanded":"Collapsed")
+                }.font(.system(size:11,weight:.medium))
+                HStack(spacing: 8) {
+                    Button {model.toggleConnection(displayID:state.id)} label:{
+                        Label(connected && !mayConnect && model.connectionControlAvailable ? "Last screen":connectionLabel,
+                              systemImage:connected ? (mayConnect ? "eject":"lock"):"cable.connector")
+                    }.controlSize(.small).disabled(!mayConnect).help(connectionHint).accessibilityLabel(connectionLabel+" "+title)
+                    if SamsungSources.supports(state.display) {
+                        Button("Sources") { model.toggleDetails(state.id) }
+                            .buttonStyle(.borderless).font(.system(size:11,weight:.medium))
+                            .accessibilityLabel("Samsung input sources and setup")
+                    }
+                }
+                if let error=frontError {Text(error).font(.caption).foregroundStyle(DeckPaint.muted)}
+            }.padding(.trailing,7).frame(maxWidth:.infinity,alignment:.leading)
+        }
+    }
     private func stepButton(_ direction: BrightnessStepDirection, _ icon: String, _ verb: String) -> some View {
         Button { model.step(direction, id: state.id) } label: {
             Image(systemName: icon).font(.system(size: 11, weight: .bold))
@@ -286,7 +273,20 @@ private struct DeskScreenStrip: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(state.display.name).font(.headline)
             Text("Output: \(output)").font(.callout)
+            if let w=state.display.desktopWidth,let h=state.display.desktopHeight {
+                Text("\(Int(w)) × \(Int(h)) desktop points" + (connected ? "" : " · last known")).font(.caption)
+            }
             if let target = state.mappedTarget { Text("Mapped target: \(target)%").font(.callout) }
+            if let actual = state.hardwareBrightness, !state.hardwareReadingIsFresh(at: model.readbackNow) {
+                Text("Hardware: \(actual)% · read \(hardwareAge)").font(.caption)
+                if let command = state.lastCommandAt, let read = state.lastReadAt, command > read {
+                    Text("The latest hardware command has not been verified yet.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if SamsungSources.supports(state.display) {
+                SamsungSourceControls(sources: model.samsungSources, shortcuts: model.shortcuts, now: model.readbackNow)
+                Divider()
+            }
             if !mayConnect { Text(connectionHint).font(.caption).foregroundStyle(.secondary) }
             if let note = state.lastError, frontError == nil { Text(note).font(.caption).foregroundStyle(.secondary) }
             Text(state.calibration.summary).font(.caption)

@@ -1,46 +1,101 @@
 import AppKit
 
-/// One vector template at menu-bar scale. The asymmetrical screens identify
-/// the app; the small sky motif conveys normal, fallback, or attention state.
+/// Out of Register: a shared brightness stripe and a single deliberately misplaced pixel.
+/// The brand mark stays fixed; the display controls, not this icon, show live desk geometry.
 @MainActor enum DeskMark {
-    enum Mode: CaseIterable { case linked, solar, attention }
-    private static let images = Dictionary(uniqueKeysWithValues: Mode.allCases.map { ($0, draw($0)) })
-
-    static func image(_ mode: Mode) -> NSImage { images[mode]! }
-
-    private static func draw(_ mode: Mode) -> NSImage {
-        let image = NSImage(size: NSSize(width: 23, height: 17), flipped: true) { _ in
-            NSColor.black.setStroke(); NSColor.black.setFill()
-            func line(_ a: NSPoint, _ b: NSPoint, _ width: CGFloat = 1.45) {
-                let p = NSBezierPath(); p.lineWidth = width; p.lineCapStyle = .round
-                p.move(to: a); p.line(to: b); p.stroke()
+    enum Mode: CaseIterable, Hashable {
+        case linked, solar, attention
+        var label: String {
+            switch self {
+            case .linked: return "BRIGHTMESS: open Source Deck"
+            case .solar: return "BRIGHTMESS: solar fallback"
+            case .attention: return "BRIGHTMESS: receiver needs attention"
             }
-            func panel(_ rect: NSRect) {
-                let p = NSBezierPath(roundedRect: rect, xRadius: 1.05, yRadius: 1.05)
-                p.lineWidth = 1.55; p.stroke()
+        }
+    }
+    enum Frame: Int, CaseIterable {
+        case resting = -1, start, one, two, three, four, five, six, seven, eight, nine, aligned
+        var progress: CGFloat { CGFloat(max(0,rawValue)) / CGFloat(Frame.aligned.rawValue) }
+        var stripeOffset: CGFloat {
+            self == .resting ? 0 : 1.4 * pow(1-min(1,progress*1.375),2)
+        }
+        var pixelAlignment: CGFloat {
+            self == .resting ? 0 : min(1,max(0,(progress-0.52)/0.48))
+        }
+    }
+    private struct Key: Hashable { let mode: Mode, frame: Frame }
+    static let size = NSSize(width:23,height:17)
+    private static var cache=[Key:NSImage]()
+
+    static func image(_ mode:Mode, frame:Frame = .resting)->NSImage {
+        let key=Key(mode:mode,frame:frame)
+        if let saved=cache[key] { return saved }
+        let im=NSImage(size:size,flipped:true) { _ in
+            func color(_ hex:Int)->NSColor {
+                NSColor(srgbRed:CGFloat((hex>>16)&255)/255,green:CGFloat((hex>>8)&255)/255,blue:CGFloat(hex&255)/255,alpha:1)
             }
-            panel(NSRect(x: 1.3, y: 2.8, width: 6.5, height: 10.3))
-            line(.init(x: 4.55,y: 13.5), .init(x: 4.55,y: 15.5))
-            line(.init(x: 2.65,y: 15.55), .init(x: 6.45,y: 15.55))
-            panel(NSRect(x: 10, y: 6.0, width: 11.6, height: 7.3))
-            line(.init(x: 12.8,y: 13.6), .init(x: 11.8,y: 15.1))
-            line(.init(x: 18.8,y: 13.6), .init(x: 19.8,y: 15.1))
-            switch mode {
-            case .linked:
-                line(.init(x: 10.7,y: 2), .init(x: 12.1,y: 3.5), 1.2)
-                line(.init(x: 15.9,y: 0.9), .init(x: 15.9,y: 2.9), 1.3)
-                line(.init(x: 21,y: 2), .init(x: 19.6,y: 3.5), 1.2)
-            case .solar:
-                let p = NSBezierPath(); p.appendArc(withCenter: .init(x: 15.8,y: 4.2), radius: 2.45,
-                                                     startAngle: 180, endAngle: 360)
-                p.lineWidth = 1.35; p.stroke()
-            case .attention:
-                line(.init(x: 15.8,y: 0.6), .init(x: 15.8,y: 2.1), 1.6)
-                NSBezierPath(ovalIn: NSRect(x: 15.05,y: 3.05,width: 1.5,height: 1.5)).fill()
+            func line(_ x:CGFloat,_ y:CGFloat,_ ex:CGFloat,_ ey:CGFloat,_ hex:Int,_ width:CGFloat) {
+                let path=NSBezierPath();path.move(to:.init(x:x,y:y));path.line(to:.init(x:ex,y:ey))
+                path.lineCapStyle = .round;path.lineWidth=width;color(hex).setStroke();path.stroke()
+            }
+            func fill(_ rect:NSRect,_ radius:CGFloat,_ hex:Int) {
+                let p=NSBezierPath(roundedRect:rect,xRadius:radius,yRadius:radius)
+                color(hex).setFill();p.fill()
+            }
+            let glass=NSGradient(colors:[color(0x4A9989),color(0x155544),color(0x0B302B)])!
+            func panel(_ r:NSRect,_ radius:CGFloat) {
+                let p=NSBezierPath(roundedRect:r,xRadius:radius,yRadius:radius)
+                glass.draw(in:p,angle:51)
+                color(0x83C4AC).setStroke();p.lineWidth=0.8;p.stroke()
+            }
+            panel(.init(x:0.65,y:6,width:11.85,height:7),1.1)
+            panel(.init(x:13.75,y:2,width:6.2,height:11),1)
+            line(3.1,13.2,1.9,14.8,0x21604A,1.1); line(9.6,13.2,10.8,14.8,0x21604A,1.1)
+            line(16.85,13.3,16.85,15.1,0x21604A,1.1); line(15,15.3,18.7,15.3,0x21604A,1.1)
+            let y=9+frame.stripeOffset
+            fill(.init(x:1.25,y:y,width:10.65,height:1.8),0.16,0xCAFF40)
+            fill(.init(x:14.35,y:y,width:4.98,height:1.8),0.16,0xCAFF40)
+            let t=frame.pixelAlignment
+            let pixel=NSBezierPath(roundedRect:.init(x:20.65-0.35*t,y:6.85+2.15*t,width:1.85,height:1.85),xRadius:0.2,yRadius:0.2)
+            color(0xFFAE3C).setFill();pixel.fill()
+            color(0x8E4E21).setStroke();pixel.lineWidth=0.45;pixel.stroke()
+            // Small mode cues use the empty space above the wide TV, not the stripe or stray pixel.
+            if mode == .solar {
+                let sun=NSBezierPath();sun.appendArc(withCenter:.init(x:5.6,y:4.4),radius:2.6,startAngle:180,endAngle:360)
+                sun.close();color(0xFFB54E).setFill();sun.fill()
+                line(2.5,4.5,8.7,4.5,0x966324,0.85)
+            } else if mode == .attention {
+                let badge=NSBezierPath();badge.move(to:.init(x:5.6,y:0.2));badge.line(to:.init(x:8.7,y:5.1));badge.line(to:.init(x:2.5,y:5.1));badge.close()
+                color(0xFA8961).setFill();badge.fill()
+                line(5.6,1.8,5.6,3,0x452A20,0.75);fill(.init(x:5.22,y:3.65,width:0.76,height:0.76),0.3,0x452A20)
             }
             return true
         }
-        image.isTemplate = true; image.accessibilityDescription = "BRIGHTMESS"
-        return image
+        im.isTemplate=false;im.accessibilityDescription=mode.label;cache[key]=im
+        return im
     }
+}
+
+/// No heartbeat or idle timer. At most ten delayed frames for one menu opening.
+@MainActor final class DeskMarkCue {
+    private(set) var frame:DeskMark.Frame = .resting
+    private var task:Task<Void,Never>?
+    func open(reduced:@escaping @MainActor ()->Bool, draw:@escaping @MainActor ()->Void) {
+        task?.cancel();task=nil
+        if reduced() {frame = .aligned;draw();return}
+        let clock=ContinuousClock(), start=clock.now, step=Duration.milliseconds(22)
+        frame = .start;draw()
+        task=Task { [weak self] in
+            for f in DeskMark.Frame.allCases where f.rawValue>0 {
+                do {try await clock.sleep(until:start+step*f.rawValue)} catch {return}
+                guard !Task.isCancelled,let self else{return}
+                if reduced() || clock.now>=start+step*DeskMark.Frame.aligned.rawValue {
+                    self.frame = .aligned;draw();self.task=nil;return
+                }
+                self.frame=f;draw()
+            }
+            self?.task=nil
+        }
+    }
+    func reset() { task?.cancel();task=nil;frame = .resting }
 }

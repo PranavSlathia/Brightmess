@@ -64,6 +64,9 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
     public let supportsStandby: Bool
     // Optional so recovery records created by earlier releases still decode.
     public let deskShape: DeskDisplayShape?
+    /// Oriented macOS desktop points, not panel pixels or physical inches.
+    /// Older recovery records have no geometry; do not invent a ratio for them.
+    public let desktopWidth: Double?, desktopHeight: Double?, desktopX: Double?
     public var shape: DeskDisplayShape { deskShape ?? .identify(name: name, portrait: false) }
 
     public init(
@@ -76,7 +79,8 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
         edidUUID: String,
         ioLocation: String,
         isMain: Bool,
-        supportsStandby: Bool, deskShape: DeskDisplayShape? = nil
+        supportsStandby: Bool, deskShape: DeskDisplayShape? = nil,
+        desktopWidth: Double? = nil, desktopHeight: Double? = nil, desktopX: Double? = nil
     ) {
         self.id = id
         self.displayID = displayID
@@ -89,12 +93,14 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
         self.isMain = isMain
         self.supportsStandby = supportsStandby
         self.deskShape = deskShape
+        self.desktopWidth = desktopWidth; self.desktopHeight = desktopHeight; self.desktopX = desktopX
     }
 }
 
 public struct DDCValue: Equatable, Sendable {
     public let current: UInt16
     public let maximum: UInt16
+    public init(current: UInt16, maximum: UInt16) { self.current = current; self.maximum = maximum }
 
     public var percentage: UInt16 {
         guard maximum > 0 else { return 0 }
@@ -122,7 +128,8 @@ public final class ExternalDDCController: @unchecked Sendable {
         guard copied > 0 else { return [] }
 
         return rawDisplays.prefix(min(Int(copied), rawDisplays.count)).map { raw in
-            ExternalDisplay(
+            let bounds = CGDisplayBounds(raw.displayID)
+            return ExternalDisplay(
                 id: Self.string(from: raw.stableID),
                 displayID: raw.displayID,
                 name: Self.string(from: raw.name),
@@ -134,7 +141,8 @@ public final class ExternalDDCController: @unchecked Sendable {
                 isMain: raw.isMain != 0,
                 supportsStandby: raw.supportsStandby != 0,
                 deskShape: .identify(name: Self.string(from: raw.name),
-                    portrait: CGDisplayBounds(raw.displayID).height > CGDisplayBounds(raw.displayID).width)
+                    portrait: bounds.height > bounds.width),
+                desktopWidth: bounds.width, desktopHeight: bounds.height, desktopX: bounds.minX
             )
         }
     }
@@ -167,6 +175,32 @@ public final class ExternalDDCController: @unchecked Sendable {
         }
     }
 
+    private func inputChannel(for display: ExternalDisplay) throws -> UInt32 {
+        let id = try DisplayConnectionController().currentDisplayID(for: display)
+        guard BRDDCValidateIdentity(id, display.vendorID, display.productID, display.serialNumber) == 0 else {
+            throw BrightnessHardwareError.displayNotFound(display.name + " (no verified DDC channel)")
+        }
+        return id
+    }
+
+    public func readInput(of display: ExternalDisplay) throws -> UInt16 {
+        let id = try inputChannel(for: display)
+        var current: UInt16 = 0, maximum: UInt16 = 0
+        let result = BRDDCReadVCP(id, 0x60, &current, &maximum)
+        guard result == 0, current > 0, current <= 255 else {
+            throw BrightnessHardwareError.ddcReadFailed(display.name + " input", result)
+        }
+        // Input-source maximum is often a count, not the largest allowed code.
+        return current
+    }
+
+    public func setInput(_ value: UInt16, on display: ExternalDisplay) throws {
+        guard value > 0, value <= 255 else { throw BrightnessHardwareError.ddcWriteFailed(display.name, -1) }
+        let id = try DisplayConnectionController().currentDisplayID(for: display)
+        let result = BRDDCWriteInputVerified(id, display.vendorID, display.productID, display.serialNumber, value)
+        guard result == 0 else { throw BrightnessHardwareError.ddcWriteFailed(display.name + " input", result) }
+    }
+
     /// Requests MCCS standby (2) or on (1). Some monitors stop accepting DDC
     /// after standby; the menu instead uses logical disconnect/reconnect.
     public func setPower(on: Bool, for display: ExternalDisplay) throws {
@@ -197,7 +231,7 @@ public final class ExternalDDCController: @unchecked Sendable {
         return successes
     }
 
-    private static func string<T>(from tuple: T) -> String {
+    static func string<T>(from tuple: T) -> String {
         var copy = tuple
         return withUnsafePointer(to: &copy) { pointer in
             pointer.withMemoryRebound(to: CChar.self, capacity: MemoryLayout<T>.size) {

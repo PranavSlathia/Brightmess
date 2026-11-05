@@ -20,7 +20,7 @@ struct BrightnessSelfTest {
                       checkAmbientValidity, checkBackwardCompatibleEnvelope, checkWhitePoint, checkDimRoomWhitePoint,
                       checkCalibration, checkMedian, checkAmbientReplay, checkLiveOrder, checkLearnedCurve,
                       checkPublisherClock, checkHoldPolicy, checkFade, checkMigration, checkWindowFit, checkTVFrames,
-                      checkTVSession, checkWindowSelection]
+                      checkTVSession, checkWindowSelection, checkMonitorSources, checkReadbackFreshness]
         for check in checks { try check() }; print("\(checks.count) core checks passed.")
     }
 
@@ -28,7 +28,31 @@ struct BrightnessSelfTest {
         guard condition() else { throw SelfTestFailure.failed(message) }
     }
 
+    private static func checkMonitorSources() throws {
+        var p = MonitorSourceProfile()
+        try require(!p.canActivate(.hdmi1, location: "port"), "Unverified HDMI source enabled")
+        p.observeReturn(15, location: "port")
+        try require(p.canActivate(.displayPort, location: "port"), "Observed DP return unavailable")
+        try require(!p.qualify(.hdmi1, proof: .init(targetCode: 17, returnCode: 18, ioLocation: "port")), "Wrong return qualified")
+        try require(p.qualify(.hdmi1, proof: .init(targetCode: 17, returnCode: 15, ioLocation: "port")), "Valid round trip rejected")
+        try require(p.configure(.hdmi1, name: "Air", code: 17) && p.canActivate(.hdmi1, location: "port"), "Rename lost proof")
+        try require(!p.canActivate(.hdmi1, location: "other"), "Port change kept qualification")
+        try require(p.configure(.hdmi1, name: "Air", code: 5) && !p.canActivate(.hdmi1, location: "port"), "Mapping change kept qualification")
+    }
+
+    private static func checkReadbackFreshness() throws {
+        let t = Date(timeIntervalSince1970: 100)
+        try require(HardwareReadbackPolicy.isFresh(readAt: t, lastWriteAt: nil, now: t.addingTimeInterval(1)), "Valid reading stale")
+        try require(!HardwareReadbackPolicy.isFresh(readAt: t, lastWriteAt: t.addingTimeInterval(1), now: t.addingTimeInterval(2)), "Old read verified new command")
+        try require(!HardwareReadbackPolicy.isFresh(readAt: t, lastWriteAt: nil, now: t.addingTimeInterval(16)), "Expired reading live")
+    }
+
     private static func checkWindowFit() throws {
+        try require(WindowPlacement.otherDisplay(containing:11,connected:[22,11]) == 22 &&
+                    WindowPlacement.otherDisplay(containing:22,connected:[22,11]) == 11,
+                    "Window toggle must reverse with the window, regardless of screen order")
+        try require(WindowPlacement.otherDisplay(containing:11,connected:[11]) == nil &&
+                    WindowPlacement.otherDisplay(containing:99,connected:[11,22]) == nil, "Do not guess another screen")
         let wide = CGRect(x: 100, y: -30, width: 1920, height: 1080)
         let tall = CGRect(x: -900, y: 25, width: 900, height: 1530)
         try require(WindowPlacement.fit(wide, from: wide, to: tall) == tall, "maximized window must fill portrait destination")

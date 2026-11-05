@@ -1,6 +1,7 @@
 import BrightnessCore
 import BrightnessHardware
 import Foundation
+import AppKit
 
 enum CLIError: Error, CustomStringConvertible {
     case missingCommand
@@ -62,6 +63,11 @@ struct BrightnessRelayCLI {
     static func main() {
         let arguments = CLIArguments(values: CommandLine.arguments)
         #if DEBUG
+        if arguments.command == "picker-preview" {
+            _ = NSApplication.shared
+            Task {do {try await BringHereChecks.render(arguments);Foundation.exit(0)}catch{fail(error)}}
+            NSApplication.shared.run();return
+        }
         if arguments.command == "panel-preview" {
             do { try DeskPreview.render(arguments) } catch { fail(error) }
             return
@@ -104,6 +110,42 @@ struct BrightnessRelayCLI {
         case "help", "--help", "-h":
             print(help)
         #if DEBUG
+        case "window-fixture-move":
+            guard let screen=arguments.option("--screen") else{throw CLIError.missingValue("--screen")}
+            try await WindowGeometryChecks.moveFixture(to:screen)
+        case "window-geometry-check":
+            try await WindowGeometryChecks.run()
+        case "window-geometry-audit":
+            guard let app=arguments.option("--app"),let screen=arguments.option("--screen") else{throw CLIError.missingValue("--app and --screen")}
+            try await WindowGeometryChecks.live(appName:app,expectedScreen:screen)
+        case "tv-identity-check":
+            try TVIdentityChecks.run()
+        case "tv-identity-audit":
+            guard try TVIdentity.storedCertificate() != nil else{throw TVError("No current certificate matches the tagged TV key")}
+            print("Current saved TV certificate found by tagged public-key hash; no key creation, signing or pairing change.")
+        case "bring-here-check":
+            try await BringHereChecks.run()
+        case "tv-reconnect-check":
+            try await TVReconnectChecks.run()
+        case "tv-lan-probe":
+            let candidates: [String] = await withCheckedContinuation { continuation in
+                _ = TVLANDiscovery.search(name:"Smart TV") { continuation.resume(returning:$0) }
+            }
+            print(candidates)
+        case "tv-mapping-check":
+            try await TVMappingChecks.run()
+        case "ddc-readback-check":
+            try DDCReadbackChecks.run()
+            try await HardwareReadbackChecks.run()
+        case "samsung-source-check":
+            try await SamsungSourceChecks.run()
+        case "display-identity-live-check":
+            try DisplayIdentityChecks.verifyNativeSnapshot()
+        case "display-identity-check":
+            try DisplayIdentityChecks.run()
+            try DisplayConnectionChecks.run()
+        case "display-recovery-check":
+            try DisplayRecoveryChecks.run()
         case "simulation-check":
             try await RuntimeChecks.run()
         #endif

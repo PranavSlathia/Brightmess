@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-02T08:12:23Z",
+  "title": "Design System: BRIGHTMESS",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Printing ink",
+        "canonical": "oklch(25.47% 0.0265 216.49)",
+        "tonalRamp": [
+          "#000E12",
+          "#15282D",
+          "#32464B",
+          "#51656B",
+          "#71878D",
+          "#93AAB0",
+          "#B7CED4",
+          "#DCF3FA"
+        ]
+      },
+      "spruce": {
+        "role": "primary",
+        "displayName": "Spruce control tint",
+        "canonical": "oklch(38.01% 0.0477 201.50)",
+        "tonalRamp": [
+          "#000E10",
+          "#002B2E",
+          "#1F4A4D",
+          "#3F6A6D",
+          "#608B8E",
+          "#82AEB2",
+          "#A6D3D6",
+          "#CAF9FC"
+        ]
+      },
+      "mint": {
+        "role": "primary",
+        "displayName": "Mint control tint",
+        "canonical": "oklch(86.40% 0.0675 154.75)",
+        "tonalRamp": [
+          "#001005",
+          "#002E16",
+          "#204C32",
+          "#406D50",
+          "#618F70",
+          "#84B293",
+          "#A7D7B6",
+          "#CCFDDB"
+        ]
+      },
+      "gold": {
+        "role": "secondary",
+        "displayName": "Printed sunlight",
+        "canonical": "oklch(85.76% 0.1333 81.67)",
+        "tonalRamp": [
+          "#120A00",
+          "#322200",
+          "#573D00",
+          "#7E5A00",
+          "#A87900",
+          "#CF9B2F",
+          "#F5C059",
+          "#FFECCB"
+        ]
+      },
+      "coral": {
+        "role": "secondary",
+        "displayName": "Portrait coral",
+        "canonical": "oklch(74.84% 0.1384 37.91)",
+        "tonalRamp": [
+          "#1B0300",
+          "#461000",
+          "#752000",
+          "#A03D1D",
+          "#C66040",
+          "#EE8463",
+          "#FFB49D",
+          "#FFE9E2"
+        ]
+      },
+      "cream": {
+        "role": "neutral",
+        "displayName": "Header cream",
+        "canonical": "oklch(96.01% 0.0376 93.83)",
+        "tonalRamp": [
+          "#0F0B00",
+          "#2B250E",
+          "#49422B",
+          "#686149",
+          "#8A8269",
+          "#ADA58B",
+          "#D1C9AE",
+          "#F7EFD3"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Desk paper",
+        "canonical": "oklch(96.90% 0.0134 97.44)",
+        "tonalRamp": [
+          "#0D0B05",
+          "#27251E",
+          "#44423A",
+          "#636159",
+          "#84827A",
+          "#A7A59C",
+          "#CBC9C0",
+          "#F1EFE5"
+        ]
+      },
+      "surface-light": {
+        "role": "neutral",
+        "displayName": "Light device plate",
+        "canonical": "oklch(99.07% 0.0095 93.57)",
+        "tonalRamp": [
+          "#0C0B07",
+          "#262520",
+          "#44423C",
+          "#63615B",
+          "#84827C",
+          "#A7A59E",
+          "#CBC9C2",
+          "#F0EEE7"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Dark device plate",
+        "canonical": "oklch(30.74% 0.0294 206.30)",
+        "tonalRamp": [
+          "#000E10",
+          "#12292C",
+          "#2F474A",
+          "#4E666A",
+          "#6E888B",
+          "#90ABAE",
+          "#B4CFD3",
+          "#D9F5F8"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Light desk title",
+        "purpose": "Source header only."
+      },
+      "device": {
+        "displayName": "Device name",
+        "purpose": "Identify the screen before reading the controls."
+      },
+      "state": {
+        "displayName": "State and navigation",
+        "purpose": "Air status and footer actions."
+      },
+      "small-action": {
+        "displayName": "Small action",
+        "purpose": "Sync now and compact controls."
+      },
+      "imprint": {
+        "displayName": "Maker's imprint",
+        "purpose": "BRIGHTMESS in the header."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "proposed-gate-open",
+        "value": "180ms cubic-bezier(0.22,1,0.36,1)",
+        "purpose": "Target only, not installed. A single edge catches light when the panel opens; omit with Reduce Motion."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Paired-screen mark",
+      "kind": "button",
+      "refersTo": "status-mark",
+      "description": "Template silhouette in its linked state.",
+      "html": "<button class=\"ds-mark\" aria-label=\"Open Light desk\"><svg aria-hidden=\"true\" width=\"23\" height=\"17\" viewBox=\"0 0 23 17\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"1.3\" y=\"2.8\" width=\"6.5\" height=\"10.3\" rx=\"1\"/><path d=\"M4.5 13.5v2h-2m2 0h2\"/><rect x=\"10\" y=\"6\" width=\"11.6\" height=\"7.3\" rx=\"1\"/><path d=\"m13 13.5-1 1.6m7-1.6 1 1.6M11 2l1 1.5M16 1v2m5-1-1.4 1.5\"/></svg></button>",
+      "css": ".ds-mark{color:#13262B;background:transparent;border:0;padding:4px;border-radius:5px}.ds-mark:hover,.ds-mark:active{background:rgba(31,74,77,.12)}@media(prefers-color-scheme:dark){.ds-mark{color:#FAF2D6}}.ds-mark:focus-visible{outline:2px solid #1F4A4D;outline-offset:2px}@media(prefers-color-scheme:dark){.ds-mark:focus-visible{outline-color:#B0E0BF}}"
+    },
+    {
+      "name": "Source header",
+      "kind": "custom",
+      "refersTo": "source-header",
+      "description": "Type, a static horizon and the source caption.",
+      "html": "<header class=\"ds-head\"><svg class=\"ds-sky\" aria-hidden=\"true\" viewBox=\"0 0 130 100\"><circle cx=\"120\" cy=\"32\" r=\"45\" fill=\"#FCC761\"/><g fill=\"none\" stroke=\"#B0E0BF\" opacity=\".32\"><circle cx=\"120\" cy=\"32\" r=\"53\"/><circle cx=\"120\" cy=\"32\" r=\"61\"/></g></svg><small>BRIGHTMESS</small><h2>Light desk</h2><p>MacBook Air · Live</p></header>",
+      "css": ".ds-head{font:12px system-ui;color:#FAF2D6;background:#13262B;padding:14px 19px;position:relative;isolation:isolate;overflow:hidden}.ds-head small{font-size:10px;font-weight:700;letter-spacing:1.5px}.ds-head h2{font:bold 35px ui-serif,serif;letter-spacing:-1.25px;margin:10px 0}.ds-head p{font-weight:500;margin:0}.ds-sky{position:absolute;z-index:-1;right:0;top:0;height:100%;width:32%}"
+    },
+    {
+      "name": "Sync now",
+      "kind": "button",
+      "refersTo": "sync-button",
+      "description": "A compact, explicit request for a fresh reading.",
+      "html": "<button class=\"ds-sync\"><svg aria-hidden=\"true\" width=\"16\" height=\"16\" viewBox=\"0 0 18 18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M13.5 7a5 5 0 1 0 .3 3M14 3v4h-4\"/></svg> Sync now</button>",
+      "css": ".ds-sync{display:inline-flex;align-items:center;gap:4px;border:1px solid rgb(176 224 191/.62);border-radius:99px;background:#13262B;color:#FAF2D6;padding:5px 8px;font:600 11px system-ui}.ds-sync:hover{border-color:#B0E0BF}.ds-sync:active{background:#1F4A4D}.ds-sync:disabled{opacity:.55}.ds-sync:focus-visible{outline:2px solid #1F4A4D;outline-offset:2px}@media(prefers-color-scheme:dark){.ds-sync:focus-visible{outline-color:#B0E0BF}}"
+    },
+    {
+      "name": "Portrait display strip",
+      "kind": "card",
+      "refersTo": "device-strip",
+      "description": "The illustration and the device name identify which screen a control belongs to.",
+      "html": "<section class=\"ds-strip\"><button class=\"ds-picture\" aria-label=\"Show details for Samsung\"><svg aria-hidden=\"true\" width=\"114\" height=\"88\" viewBox=\"0 0 168 128\"><rect width=\"168\" height=\"128\" fill=\"#FACF91\"/><circle cx=\"144\" cy=\"16\" r=\"50\" fill=\"#F78C6B\"/><path d=\"M0 105h168v23H0z\" fill=\"#13262B\" opacity=\".09\"/><path d=\"M58 9h49q3 0 3 3v85q0 3-3 3H58q-3 0-3-3V12q0-3 3-3zM79 100h7v13h-7zM65 114h36v2H65z\" fill=\"#13262B\"/><rect x=\"59\" y=\"13\" width=\"47\" height=\"83\" fill=\"#F78C6B\"/><circle cx=\"76\" cy=\"32\" r=\"11\" fill=\"#FAF2D6\"/><path d=\"M59 59q11-12 25 0t22 0v37H59z\" fill=\"#934E3D\"/><path d=\"M59 79q12-9 24 0t23 1v16H59z\" fill=\"#13262B\"/></svg></button><div><strong>Samsung</strong><p>Portrait monitor</p></div></section>",
+      "css": ".ds-strip{display:flex;align-items:center;gap:13px;background:#FEFCF5;color:#13262B;border:1px solid rgb(19 38 43/.1);border-radius:11px;padding:11px 12px;font:12px system-ui}.ds-strip strong{font:700 19px ui-rounded,system-ui}.ds-strip p{margin:5px 0;color:inherit}.ds-picture{border:0;border-radius:7px;line-height:0;overflow:hidden;padding:0;background:none}.ds-picture:hover,.ds-picture:active{outline:1px solid #1F4A4D}@media(prefers-color-scheme:dark){.ds-strip{background:#1D3437;color:#FAF2D6}}.ds-picture:focus-visible{outline:2px solid #1F4A4D;outline-offset:2px}@media(prefers-color-scheme:dark){.ds-picture:focus-visible{outline-color:#B0E0BF}}"
+    },
+    {
+      "name": "Brightness input",
+      "kind": "input",
+      "refersTo": "brightness-slider",
+      "description": "Native control, positioned within a single display's strip.",
+      "html": "<label class=\"ds-level\">Samsung brightness <input type=\"range\" min=\"0\" max=\"100\" value=\"68\" aria-label=\"Brightness for Samsung\"></label>",
+      "css": ".ds-level{display:inline-flex;gap:8px;align-items:center;background:#FEFCF5;color:#13262B;border-radius:8px;padding:8px;font:12px system-ui}.ds-level input{accent-color:#1F4A4D}.ds-level input:hover{cursor:pointer}.ds-level input:disabled{opacity:.5}@media(prefers-color-scheme:dark){.ds-level{background:#1D3437;color:#FAF2D6}.ds-level input{accent-color:#B0E0BF}}.ds-level input:focus-visible{outline:2px solid #1F4A4D;outline-offset:2px}@media(prefers-color-scheme:dark){.ds-level input:focus-visible{outline-color:#B0E0BF}}"
+    },
+    {
+      "name": "Desk footer",
+      "kind": "nav",
+      "refersTo": "desk-footer",
+      "description": "Secondary controls stay within the same popover.",
+      "html": "<nav class=\"ds-foot\" aria-label=\"Light desk tools\"><button aria-expanded=\"false\">Shortcuts &amp; icons</button><button aria-expanded=\"false\"><svg aria-hidden=\"true\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 4h12M2 12h12\"/><circle cx=\"5\" cy=\"4\" r=\"2\"/><circle cx=\"10\" cy=\"12\" r=\"2\"/></svg> Desk details</button></nav>",
+      "css": ".ds-foot{display:flex;justify-content:space-between;gap:8px;background:#FEFCF5;color:#13262B;border-top:1px solid rgb(19 38 43/.1);padding:11px 16px}.ds-foot button{display:inline-flex;align-items:center;gap:5px;font:500 12px system-ui;background:transparent;color:inherit;border:0}.ds-foot button:hover,.ds-foot button:active{text-decoration:underline}@media(prefers-color-scheme:dark){.ds-foot{background:#1D3437;color:#FAF2D6}}.ds-foot button:focus-visible{outline:2px solid #1F4A4D;outline-offset:2px}@media(prefers-color-scheme:dark){.ds-foot button:focus-visible{outline-color:#B0E0BF}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Light Gate",
+    "overview": "An enlarger in a darkroom holds a sheet still while the light above it changes. Treat the desk the same way: the upright Samsung and the wide TV are the fixed frame; the picture inside each frame can brighten, dim or disappear. The menu-bar mark is that instrument in miniature. It must still read as two different screens at a glance.\n\nPranav opens Light desk on the portrait monitor, sometimes in daylight, sometimes with a game lighting the room. Match the Mac's light or dark appearance. The character comes from the printed sun, cut silhouettes and registration marks, not from making controls unfamiliar. The next design should feel raw in its marks, precise in its response, and ambitious in how the icon opens into the panel.",
+    "keyCharacteristics": [
+      "Two recognizable silhouettes before a single percentage.",
+      "One expressive surface around quiet, native controls.",
+      "Changes in light belong to the screen that changed."
+    ],
+    "rules": [
+      {
+        "name": "The Exposure Rule",
+        "body": "Dim the picture inside the bezel. Do not dim the device name, controls, or surrounding room to convey brightness.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Lens Rule",
+        "body": "Put the glass at the boundary of the instrument. Do not put another pane around each button, slider or device.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Still Desk Rule",
+        "body": "Animate a change, not the passage of time. With Reduce Motion, skip travel, refraction and scale; use the final static mark, label or picture immediately. No shimmer, timer or rendering loop while the menu is closed or settled.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do keep the portrait stand and TV feet legible in a single-color silhouette.",
+      "Do keep keyboard focus, disabled explanations and action labels visible in both appearances.",
+      "Do show exact readings in Details and distinguish a hardware read from the last value set."
+    ],
+    "donts": [
+      "Don't replace the desk with a dashboard of repeated percentages.",
+      "Don't use glass behind text if a bright desktop can erase the label.",
+      "Don't confuse dimming with disconnecting, moving a window with switching HDMI, or sending a command with seeing the picture.",
+      "Don't turn a heartbeat into a pulsing icon or sample the user's desktop as artwork."
+    ]
+  }
+}

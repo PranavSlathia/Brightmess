@@ -12,15 +12,27 @@ fi
 PLIST="$HOME/Library/LaunchAgents/dev.pranav.brightness-relay.receiver.plist"
 TOKEN="$HOME/.config/brightness-relay/token"
 SUPPORT="$HOME/Library/Application Support/Brightness Relay/Backups"
+STAGE_ONLY=0
+if (( $# )); then
+  [[ $# == 1 && "$1" == --stage-only ]] || { print -u2 'usage: install-mini.sh [--stage-only]'; exit 2; }
+  STAGE_ONLY=1
+fi
 cd "$ROOT"
 if [[ "${BR_SKIP_BUILD:-0}" != 1 ]]; then
   "$ROOT/scripts/swiftpm.sh" build -c release
 fi
-mkdir -p "$HOME/Applications" "$HOME/.local/bin" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-STAGE="$(mktemp -d "$HOME/Applications/.brightness-update.XXXXXX")"
+if (( STAGE_ONLY )); then
+  STAGE="$(mktemp -d "$ROOT/.build/mini-preview.XXXXXX")"
+else
+  mkdir -p "$HOME/Applications" "$HOME/.local/bin" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+  STAGE="$(mktemp -d "$HOME/Applications/.brightness-update.XXXXXX")"
+fi
 STAGED_APP="$STAGE/BRIGHTMESS.app"
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
 install -m 755 .build/release/brightness-relay "$STAGED_APP/Contents/MacOS/brightness-relay"
+for asset in BRIGHTMESS.icns Assets.car; do
+  install -m 644 "Assets/Brand/Compiled/$asset" "$STAGED_APP/Contents/Resources/$asset"
+done
 install -m 644 NOTICE "$STAGED_APP/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 install -m 644 .build/checkouts/SunKit/LICENSE "$STAGED_APP/Contents/Resources/SunKit-LICENSE.txt"
 install -m 644 .build/checkouts/swift-atomics/LICENSE.txt "$STAGED_APP/Contents/Resources/Swift-Atomics-LICENSE.txt"
@@ -31,18 +43,51 @@ plutil -insert CFBundleIdentifier -string dev.pranav.BrightnessRelay "$INFO"
 plutil -insert CFBundleName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundleDisplayName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
-plutil -insert CFBundleShortVersionString -string 0.9.0 "$INFO"
-plutil -insert CFBundleVersion -string 10 "$INFO"
+plutil -insert CFBundleIconFile -string BRIGHTMESS "$INFO"
+plutil -insert CFBundleIconName -string BRIGHTMESS "$INFO"
+VERSION=0.12.3
+BUILD=26
+plutil -insert CFBundleShortVersionString -string "$VERSION" "$INFO"
+plutil -insert CFBundleVersion -string "$BUILD" "$INFO"
 plutil -insert NSLocalNetworkUsageDescription -string "Find your selected Android TV and send input commands on your local network." "$INFO"
 plutil -insert NSBonjourServices -json '["_androidtvremote2._tcp"]' "$INFO"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$INFO"
 plutil -insert LSUIElement -bool true "$INFO"
 plutil -insert NSHighResolutionCapable -bool true "$INFO"
-# This is a local build. Never automatically pick a certificate from Keychain:
-# find-identity can list a certificate whose online trust has been revoked.
-SIGNING_IDENTITY="${BR_SIGNING_IDENTITY:--}"
+# Keep a stable identity across updates. Never auto-pick from find-identity:
+# its list can include a revoked certificate. Never silently fall back to ad hoc.
+SIGNING_IDENTITY="${BR_SIGNING_IDENTITY:-}"
+SIGNING_CONFIG="$HOME/.config/brightness-relay/signing-identity"
+if [[ -z "$SIGNING_IDENTITY" && -f "$SIGNING_CONFIG" ]]; then
+  IFS= read -r SIGNING_IDENTITY < "$SIGNING_CONFIG"
+fi
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+  print -u2 'Set BR_SIGNING_IDENTITY to a verified certificate fingerprint, or save it in ~/.config/brightness-relay/signing-identity. Installed app not changed.'
+  exit 1
+fi
+if [[ "$SIGNING_IDENTITY" == - ]]; then
+  (( STAGE_ONLY )) || { print -u2 'Ad-hoc signing is only allowed with --stage-only; it breaks identity continuity on updates.'; exit 1; }
+else
+  /usr/bin/swift "$ROOT/scripts/verify-signing-identity.swift" "$SIGNING_IDENTITY"
+fi
 codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$STAGED_APP"
 codesign --verify --strict "$STAGED_APP"
+if [[ -d "$OLD" && "$SIGNING_IDENTITY" != - ]]; then
+  OLD_SIGNATURE="$(codesign -dv "$OLD" 2>&1)" || { print -u2 'Cannot inspect installed signature; update stopped.'; exit 1; }
+  # Do not pipe codesign into grep -q under pipefail: its early exit can cause
+  # SIGPIPE and misclassify an ad-hoc predecessor as a certificate-signed app.
+  if [[ "$OLD_SIGNATURE" != *'Signature=adhoc'* ]]; then
+    OLD_REQUIREMENT="$(codesign -d -r- "$OLD" 2>&1 | sed -n 's/^designated => //p')"
+    [[ -n "$OLD_REQUIREMENT" ]] || { print -u2 'Cannot establish installed signing identity; update stopped.'; exit 1; }
+    codesign --verify --strict -R "=$OLD_REQUIREMENT" "$STAGED_APP" || {
+      print -u2 'New app does not match the installed signing identity. Installed app was not changed.'; exit 1;
+    }
+  fi
+fi
+if (( STAGE_ONLY )); then
+  print "$STAGED_APP"
+  exit 0
+fi
 mkdir -p "$SUPPORT"
 BACKUP="$(mktemp -d "$SUPPORT/$(date +%Y%m%d-%H%M%S).XXXXXX")"
 [[ ! -f "$HOME/.local/bin/brightness-relay" ]] || cp -p "$HOME/.local/bin/brightness-relay" "$BACKUP/cli"
@@ -113,17 +158,17 @@ fi
 if launchctl bootstrap "gui/$(id -u)" "$PLIST"; then
   for attempt in {1..45}; do
     if "$HOME/.local/bin/brightness-relay" status --host 127.0.0.1 2>/dev/null |
-        plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx '10'; then
-      print "BRIGHTMESS receiver build 10 verified."
+        plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx "$BUILD"; then
+      print "BRIGHTMESS receiver build $BUILD verified."
       break
     fi
     sleep 2
   done
 fi
 if ! "$HOME/.local/bin/brightness-relay" status --host 127.0.0.1 2>/dev/null |
-     plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx '10'; then
+     plutil -extract controls.uiBuild raw -o - - 2>/dev/null | grep -qx "$BUILD"; then
   restore_on_failure
   print -u2 "Receiver did not start; see $BACKUP"; exit 1
 fi
 trap - ZERR
-echo "BRIGHTMESS 0.9.0 installed. Previous app and launch settings: $BACKUP"
+echo "BRIGHTMESS $VERSION installed. Previous app and launch settings: $BACKUP"

@@ -1,6 +1,11 @@
 import CoreGraphics
 
 public enum WindowPlacement {
+    /// The source is the window's screen, never the pointer or the status item's screen.
+    public static func otherDisplay(containing source: UInt32, connected: [UInt32]) -> UInt32? {
+        guard connected.count == 2, connected.contains(source) else { return nil }
+        return connected.first { $0 != source }
+    }
     public struct Snapshot {
         public let screen: UInt32, rect: CGRect, usable: CGRect, fullScreen: Bool, movable: Bool
         public init(screen: UInt32, rect: CGRect, usable: CGRect, fullScreen: Bool, movable: Bool) {
