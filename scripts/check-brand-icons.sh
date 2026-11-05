@@ -17,4 +17,4 @@ plutil -insert CFBundleIdentifier -string dev.pranav.Brightmess.IconProof "$info
 plutil -insert CFBundleExecutable -string BrandProof "$info"
 plutil -insert CFBundleIconFile -string BRIGHTMESS "$info"
 plutil -insert CFBundleIconName -string BRIGHTMESS "$info"
-"$app/Contents/MacOS/BrandProof" "$out" "${2:-$app}"
+"$app/Contents/MacOS/BrandProof" "$out" "${2:-$app}" "${3:-}"

@@ -37,6 +37,7 @@ import BrightnessCore
     }
     func choose(_ mode:ArrangementMode){guard !working else{return};self.mode=mode;replan()}
     func include(_ id:String,_ on:Bool){guard !working else{return};if on{selected.insert(id)}else{selected.remove(id)};replan()}
+    func selectAll(_ on:Bool){guard stage == .preview else{return};selected=on ? Set(windows.map(\.id)):[];replan()}
     func replan(){
         guard let display else{return}
         let chosen=windows.filter{selected.contains($0.id)}

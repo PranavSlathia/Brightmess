@@ -68,6 +68,12 @@ struct ArrangeHUD:View {
             if model.stage == .loading {
                 ProgressView().controlSize(.small).accessibilityLabel("Finding windows")
             } else if model.stage == .preview && model.showWindows {
+                    HStack {
+                        Text("Include windows").font(.caption)
+                        Spacer()
+                        Button("All"){model.selectAll(true)}.accessibilityLabel("Select all windows")
+                        Button("None"){model.selectAll(false)}.accessibilityLabel("Deselect all windows")
+                    }.controlSize(.small)
                     ScrollView {
                         VStack(alignment:.leading,spacing:6) {
                             ForEach(model.windows) { window in

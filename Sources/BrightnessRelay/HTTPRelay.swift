@@ -487,7 +487,10 @@ final class RelayHTTPServer {
                      "connected": $0.connectionState.isConnected,
                      "brightness": $0.brightness.map { Int($0) } as Any? ?? NSNull(),
                      "automatic": $0.followsAutomatic, "mappedTarget": $0.mappedTarget.map { Int($0) } as Any? ?? NSNull(),
-                     "readingKind": $0.brightnessOrigin.rawValue, "learnedPoints": $0.calibration.count,
+                     "readingKind": $0.readingKind(at: Date()).rawValue, "learnedPoints": $0.calibration.count,
+                     "hardwareBrightness": $0.hardwareBrightness.map { Int($0) } as Any? ?? NSNull(),
+                     "hardwareReadingAgeSeconds": $0.lastReadAt.map { max(0, Date().timeIntervalSince($0)) } as Any? ?? NSNull(),
+                     "hardwareReadingFresh": $0.hardwareReadingIsFresh(at: Date()),
                      "learning": $0.learningNote as Any? ?? NSNull(), "extraDimAtMinimum": Int($0.extraDim),
                      "error": $0.lastError as Any? ?? NSNull(),
                      "method": $0.controlMethod.rawValue]
@@ -495,6 +498,7 @@ final class RelayHTTPServer {
                 let writes = displayCoordinator.writeCounts
                 var status: [String: Any] = [
                     "hardwareWritesSinceStart": writes.hardware, "softwareWritesSinceStart": writes.software,
+                    "hardwareReadAttemptsSinceStart": displayCoordinator.readAttempts,
                     "version": "0.8.0", "displays": displays,
                     "acceptedSamplesSinceStart": acceptedSamples, "sourceSession": sessionID?.uuidString as Any? ?? NSNull(),
                     "sourceMode": presence.mode?.rawValue as Any? ?? NSNull(),

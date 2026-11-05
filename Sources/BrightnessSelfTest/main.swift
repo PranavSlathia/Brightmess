@@ -20,12 +20,31 @@ struct BrightnessSelfTest {
                       checkAmbientValidity, checkBackwardCompatibleEnvelope, checkWhitePoint, checkDimRoomWhitePoint,
                       checkCalibration, checkMedian, checkAmbientReplay, checkLiveOrder, checkLearnedCurve,
                       checkPublisherClock, checkHoldPolicy, checkFade, checkMigration, checkWindowFit, checkTVFrames,
-                      checkTVSession, checkWindowSelection]
+                      checkTVSession, checkWindowSelection, checkMonitorSources, checkReadbackFreshness]
         for check in checks { try check() }; print("\(checks.count) core checks passed.")
     }
 
     private static func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
         guard condition() else { throw SelfTestFailure.failed(message) }
+    }
+
+    private static func checkMonitorSources() throws {
+        var p = MonitorSourceProfile()
+        try require(!p.canActivate(.hdmi1, location: "port"), "Unverified HDMI source enabled")
+        p.observeReturn(15, location: "port")
+        try require(p.canActivate(.displayPort, location: "port"), "Observed DP return unavailable")
+        try require(!p.qualify(.hdmi1, proof: .init(targetCode: 17, returnCode: 18, ioLocation: "port")), "Wrong return qualified")
+        try require(p.qualify(.hdmi1, proof: .init(targetCode: 17, returnCode: 15, ioLocation: "port")), "Valid round trip rejected")
+        try require(p.configure(.hdmi1, name: "Air", code: 17) && p.canActivate(.hdmi1, location: "port"), "Rename lost proof")
+        try require(!p.canActivate(.hdmi1, location: "other"), "Port change kept qualification")
+        try require(p.configure(.hdmi1, name: "Air", code: 5) && !p.canActivate(.hdmi1, location: "port"), "Mapping change kept qualification")
+    }
+
+    private static func checkReadbackFreshness() throws {
+        let t = Date(timeIntervalSince1970: 100)
+        try require(HardwareReadbackPolicy.isFresh(readAt: t, lastWriteAt: nil, now: t.addingTimeInterval(1)), "Valid reading stale")
+        try require(!HardwareReadbackPolicy.isFresh(readAt: t, lastWriteAt: t.addingTimeInterval(1), now: t.addingTimeInterval(2)), "Old read verified new command")
+        try require(!HardwareReadbackPolicy.isFresh(readAt: t, lastWriteAt: nil, now: t.addingTimeInterval(16)), "Expired reading live")
     }
 
     private static func checkWindowFit() throws {

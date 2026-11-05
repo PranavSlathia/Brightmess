@@ -2,17 +2,17 @@
   "fill": { "automatic-gradient": "extended-srgb:0.14902,0.34510,0.26275,1.00000" },
   "groups": [
     {
-      "name": "Out of Register",
+      "name": "The Brightest Mess",
       "layers": [
         {
-          "name": "Two displays, shared stripe and stray pixel",
-          "image-name": "OutOfRegister.png",
-          "position": { "scale": 0.95, "translation-in-points": [0, 0] }
+          "name": "Crooked gold sun and runaway amber ray",
+          "image-name": "BrightestMess.png",
+          "position": { "scale": 1, "translation-in-points": [0, 0] }
         }
       ],
       "shadow": { "kind": "neutral", "opacity": 0.35 },
-      "translucency": { "enabled": true, "value": 0.10 },
-      "specular": true
+      "translucency": { "enabled": false, "value": 0 },
+      "specular": false
     }
   ],
   "supported-platforms": { "squares": ["macOS"] }

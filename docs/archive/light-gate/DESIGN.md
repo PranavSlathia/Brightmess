@@ -91,7 +91,7 @@ Pranav opens Light desk on the portrait monitor, sometimes in daylight, sometime
 - One expressive surface around quiet, native controls.
 - Changes in light belong to the screen that changed.
 
-**Scope:** The tokens above describe Mini build 11. Sizes are macOS logical points; the preview snippets use the same numbers in CSS pixels. The glass and motion proposals below are design targets, not installed features. [Product constraints](PRODUCT.md) and the [current popover](docs/light-desk.png) are the baseline.
+**Scope:** The tokens above describe Mini build 11. Sizes are macOS logical points; the preview snippets use the same numbers in CSS pixels. The glass and motion proposals below are design targets, not installed features. [Product constraints](../../../PRODUCT.md) and the [build-11 popover](../../light-desk.png) are the baseline.
 
 ## Colors
 

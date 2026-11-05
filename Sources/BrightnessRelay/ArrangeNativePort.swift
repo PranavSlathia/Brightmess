@@ -41,11 +41,12 @@ import Darwin
                           (try? ArrangeAX.flag(element,"AXFullScreen")) == false,
                           ArrangeAX.settable(element,kAXPositionAttribute),
                           let id=ArrangeAX.id(element),let record=records[id],record.owner==pid,
-                          screens.max(by:{ArrangeAX.area($0.usable,record.frame)<ArrangeAX.area($1.usable,record.frame)})?.id==display.id,
-                          ArrangeAX.area(display.usable,record.frame)>0 else{continue}
+                          let frame=ArrangeAX.resolvedFrame(element,id:id,record:record),
+                          screens.max(by:{ArrangeAX.area($0.usable,frame)<ArrangeAX.area($1.usable,frame)})?.id==display.id,
+                          ArrangeAX.area(display.usable,frame)>0 else{continue}
                     let minimum=ArrangeAX.minimum(element)
                     let window=ArrangementWindow(id:"\(pid):\(id)",app:name,title:ArrangeAX.value(element,kAXTitleAttribute) as? String ?? "Untitled window",
-                        frame:record.frame,minimum:minimum,resizable:ArrangeAX.settable(element,kAXSizeAttribute))
+                        frame:frame,minimum:minimum,resizable:ArrangeAX.settable(element,kAXSizeAttribute))
                     result.append((window,element))
                 }
             }
@@ -63,12 +64,15 @@ import Darwin
     func write(_ id:String,frame:CGRect) async throws {
         guard trusted,let element=elements[id],ArrangementPlanner.valid(frame) else{throw TVError("Window unavailable or invalid target.")}
         let job=Task.detached(priority:.userInitiated) {
-            try Task.checkCancellation();_ = try ArrangeAX.checkedFrame(element,id:id)
+            try Task.checkCancellation();try ArrangeAX.checkedIdentity(element,id:id)
             var size=frame.size,origin=frame.origin
             if ArrangeAX.settable(element,kAXSizeAttribute),let value=AXValueCreate(.cgSize,&size) {
                 _ = AXUIElementSetAttributeValue(element,kAXSizeAttribute as CFString,value)
             }
-            try Task.checkCancellation();_ = try ArrangeAX.checkedFrame(element,id:id)
+            // A resize can temporarily withdraw/update WindowServer geometry.
+            // Keep exact identity checks here; bounded geometry readback belongs
+            // after the single write sequence, never between resize and move.
+            try Task.checkCancellation();try ArrangeAX.checkedIdentity(element,id:id)
             guard let value=AXValueCreate(.cgPoint,&origin),AXUIElementSetAttributeValue(element,kAXPositionAttribute as CFString,value) == .success else {
                 throw TVError("An app refused its position. Undo this attempt or refresh the preview.")
             }
@@ -98,15 +102,7 @@ private enum ArrangeAX {
         return AXUIElementIsAttributeSettable(element,key as CFString,&result) == .success && result.boolValue
     }
     struct Record {let owner:Int32,frame:CGRect,onScreen:Bool}
-    typealias GetID = @convention(c)(AXUIElement,UnsafeMutablePointer<UInt32>)->Int32
-    static let getID:GetID? = {
-        guard let handle=dlopen(nil,RTLD_LAZY),let symbol=dlsym(handle,"_AXUIElementGetWindow") else{return nil}
-        return unsafeBitCast(symbol,to:GetID.self)
-    }()
-    static func id(_ element:AXUIElement)->UInt32? {
-        if let n=ArrangeAX.value(element,"AXWindowNumber") as? NSNumber,n.uint32Value>0{return n.uint32Value}
-        var id:UInt32=0;guard getID?(element,&id)==AXError.success.rawValue,id>0 else{return nil};return id
-    }
+    static func id(_ element:AXUIElement)->UInt32? {WindowServerGeometry.id(element)}
     static func records(_ only:UInt32?=nil)->[UInt32:Record] {
         let options:CGWindowListOption=only == nil ? [.optionOnScreenOnly,.excludeDesktopElements]:.optionIncludingWindow
         let rows=CGWindowListCopyWindowInfo(options,only ?? kCGNullWindowID) as? [[String:Any]] ?? []
@@ -119,12 +115,25 @@ private enum ArrangeAX {
         };return values
     }
     static func area(_ a:CGRect,_ b:CGRect)->CGFloat {let r=a.intersection(b);return r.isNull || r.isEmpty ? 0:r.width*r.height}
-    static func checkedFrame(_ element:AXUIElement,id expected:String)throws->CGRect {
+    static func resolvedFrame(_ element:AXUIElement,id:UInt32,record:Record)->CGRect? {
+        guard record.onScreen,let logical=AXDesk.accessibilityFrame(element) else{return nil}
+        return WindowGeometry.resolve(accessibility:logical,windowID:id,owner:record.owner,
+            records:[.init(id:id,owner:record.owner,frame:record.frame)])
+    }
+    static func checkedIdentity(_ element:AXUIElement,id expected:String)throws {
         var pid:pid_t=0
         guard AXUIElementGetPid(element,&pid) == .success,let id=id(element),"\(pid):\(id)"==expected,
-              try !flag(element,kAXMinimizedAttribute),try !flag(element,"AXFullScreen"),
-              let record=records(id)[id],record.owner==pid,record.onScreen else{throw TVError("That exact window is not on this desktop or is unavailable. Refresh the preview.")}
-        return record.frame
+              try !flag(element,kAXMinimizedAttribute),try !flag(element,"AXFullScreen") else {
+            throw TVError("That exact window is unavailable. Refresh the preview.")
+        }
+    }
+    static func checkedFrame(_ element:AXUIElement,id expected:String)throws->CGRect {
+        try checkedIdentity(element,id:expected)
+        var pid:pid_t=0
+        guard AXUIElementGetPid(element,&pid) == .success,let id=id(element),"\(pid):\(id)"==expected,
+              let record=records(id)[id],record.owner==pid,
+              let frame=resolvedFrame(element,id:id,record:record) else{throw TVError("That exact window is not on this desktop or its geometry is settling. Refresh the preview.")}
+        return frame
     }
     static func minimum(_ element:AXUIElement)->CGSize {
         var size=CGSize(width:320,height:200)

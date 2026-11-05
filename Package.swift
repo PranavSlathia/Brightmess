@@ -25,6 +25,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("CoreDisplay"),
                 .linkedFramework("CoreGraphics"),
+                .linkedFramework("ColorSync"),
                 .linkedFramework("DisplayServices"),
                 .linkedFramework("IOKit"),
                 .unsafeFlags(["-F/System/Library/PrivateFrameworks"]),
@@ -61,7 +62,7 @@ let package = Package(
         ),
         .testTarget(
             name: "BrightnessCoreTests",
-            dependencies: ["BrightnessCore"]
+            dependencies: ["BrightnessCore", "BrightnessHardware"]
         ),
     ],
     swiftLanguageModes: [.v5]

@@ -33,7 +33,19 @@ enum RuntimeChecks {
     }
 
     @MainActor static func run() async throws {
+        try await ArrangeChecks.run()
+        try WindowGeometryChecks.run()
+        try TVIdentityChecks.run()
+        try TVMappingChecks.run()
+        try await TVReconnectChecks.run()
+        try DDCReadbackChecks.run()
+        try await HardwareReadbackChecks.run()
+        try await SamsungSourceChecks.run()
+        try DisplayIdentityChecks.run()
+        try DisplayConnectionChecks.run()
+        try DisplayRecoveryChecks.run()
         try await DeskShelfChecks.run()
+        try await BringHereChecks.run()
         func expect(_ test: @autoclosure () -> Bool, _ message: String) throws {
             if !test() { throw Failed.check(message) }
         }

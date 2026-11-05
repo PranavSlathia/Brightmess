@@ -1,8 +1,24 @@
-# Arrange here — isolated feature lane
+# Arrange here — BRIGHTMESS 0.13.0 / build 28
 
-This worktree implements the first version without replacing the installed Mini
-app or touching the main chat's in-progress movement fixes. Before release, merge
-and qualify it against those fixes. No TV actions or Air helper changes belong here.
+This feature began in an isolated lane and is now integrated with committed
+window, TV, display-recovery and signing fixes through `7e67dd0`. The installed
+build-27 sun mark is preserved; the parent checkout's unfinished colour/layout
+redesign is not included. No Air update or TV source change is required.
+
+## Integrated release verification
+
+- 58 Swift Testing cases pass, including the 13 arrangement regressions.
+- Expanded executable simulation passes for arrangement, picker, geometry,
+  TV identity/recovery/mapping, hardware readback, display recovery and live sync.
+- Release build and 27 core executable checks pass. Native light/dark previews
+  and icon/Reduce Motion checks pass.
+- Arrangement shares `WindowServerGeometry.id` and the verified
+  `WindowGeometry.resolve` size-agreement guard. It never reads a transitional
+  frame between resize and move in its single native write sequence.
+- The user requested activation of Control-Option-Return on this Mini only.
+  New installs still leave the action unassigned until selected.
+- Installation, rollback path and actual-window acceptance are recorded below
+  after the signed update is verified.
 
 ## Direction contract
 
@@ -35,7 +51,7 @@ release gate. This is an extension of the existing DESIGN.md, not a replacement.
    main-pane layouts. It does not inspect app contents or infer a browser's page.
    **Equal** gives each selected window an equal-size zone; an unused final grid
    cell is possible when the count does not divide evenly.
-4. **Windows** expands a checklist. Deselecting a window changes only the preview.
+4. **Windows** expands a checklist with All/None. Deselecting a window changes only the preview.
    **Refresh** scans again and resets selection to the eligible windows.
 5. **Apply arrangement** (Return) performs the changes. **Undo** (Command-Z)
    restores exact, unchanged window identities. **Close** (Escape) exits preview;
@@ -122,7 +138,7 @@ The native port is separate to avoid overwriting the main thread's in-progress
 window-identity/full-screen fixes. During integration, reconcile or share the
 adapter only after those fixes are committed and their tests still pass.
 
-## Verification — 2026-11-06
+## Initial isolated verification — 2026-11-06
 
 On branch `codex/arrange-here-v1`, base `b8f5094`:
 
@@ -162,15 +178,15 @@ suite. It does not create a receiver, network session, real AX window driver or
 global key registration. Its process name is `BRMFixture`, so restarting it cannot
 kill the installed `brightness-relay`.
 
-## Release boundary
+## Release boundary and integration history
 
 Source and fixture checks do not qualify all app behaviour. Physical checks must
 cover portrait/landscape, mixed scaling, app size clamps, current Spaces,
 disconnection, cancellation, Undo after user edits and unrelated TV/Air controls.
-Use the final signed receiver pipeline from the main lane; do not install this
-older-base worktree over the live app.
+The integrated version uses the stable-signed receiver pipeline. The original
+older-base build was not installed over the live app.
 
-Before any install:
+Integration checklist:
 
 1. Integrate the additive files and the small shortcut/popover hooks with the
    main lane's current picker, TV identity and stable-signing changes; preserve

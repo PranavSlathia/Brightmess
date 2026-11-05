@@ -31,6 +31,9 @@ import BrightnessCore
         let port=ArrangeFixturePort(screen:d),model=ArrangeModel(port:port)
         model.open(d);await model.finish()
         guard model.plan?.items.count==4,port.writes==0 else{throw TVError("Preview moved windows or missed choices")}
+        model.selectAll(false)
+        guard model.plan==nil,model.selected.isEmpty,port.writes==0 else{throw TVError("Deselect-all changed windows")}
+        model.selectAll(true)
         model.include("fixture-0",false)
         model.choose(.equal)
         guard model.plan?.items.count==3,port.writes==0 else{throw TVError("Exclusion/mode change wrote native frames")}

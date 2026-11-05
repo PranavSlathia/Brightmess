@@ -298,6 +298,37 @@ static uint8_t BRChecksum(uint8_t seed, const uint8_t *bytes, size_t count) {
     return checksum;
 }
 
+static int32_t BRTransportValidateIdentity(BRDDCTransport transport, uint32_t vendorID,
+                                           uint32_t productID, uint32_t serialNumber) {
+    typedef IOReturn (*CopyEDID)(IOAVService, CFDataRef *);
+    CopyEDID copyEDID = (CopyEDID)dlsym(RTLD_DEFAULT, "IOAVServiceCopyEDID");
+    if (!copyEDID) return -1;
+    if (!transport.service) return -2;
+    CFDataRef data = NULL;
+    IOReturn error = copyEDID(transport.service, &data);
+    if (error || !data) { if (data) CFRelease(data); return -3; }
+    int32_t result = -4;
+    if (CFDataGetLength(data) >= 128) {
+        const uint8_t *e = CFDataGetBytePtr(data);
+        const uint8_t header[] = {0,255,255,255,255,255,255,0};
+        uint8_t sum = 0; for (int i=0; i<128; i++) sum += e[i];
+        uint32_t serial = e[12] | (e[13]<<8) | (e[14]<<16) | ((uint32_t)e[15]<<24);
+        if (!sum && !memcmp(e,header,8) && ((e[8]<<8)|e[9]) == vendorID &&
+            (e[10]|(e[11]<<8)) == productID && serial == serialNumber) result = 0;
+    }
+    CFRelease(data);
+    return result;
+}
+
+int32_t BRDDCValidateIdentity(uint32_t displayID, uint32_t vendorID,
+                             uint32_t productID, uint32_t serialNumber) {
+    BRDDCTransport transport = BRCreateTransport(displayID);
+    if (!transport.service) return -2;
+    int32_t result = BRTransportValidateIdentity(transport, vendorID, productID, serialNumber);
+    CFRelease(transport.service);
+    return result;
+}
+
 static bool BRWriteVCP(BRDDCTransport transport, uint8_t code, uint16_t value) {
     uint8_t packet[6] = {
         0x84,
@@ -323,6 +354,17 @@ int32_t BRDDCWriteVCP(uint32_t displayID, uint8_t code, uint16_t value) {
     bool success = BRWriteVCP(transport, code, value);
     CFRelease(transport.service);
     return success ? 0 : -3;
+}
+
+int32_t BRDDCWriteInputVerified(uint32_t displayID, uint32_t vendorID,
+                               uint32_t productID, uint32_t serialNumber, uint16_t input) {
+    if (input == 0 || input > 255) return -1;
+    BRDDCTransport transport = BRCreateTransport(displayID);
+    if (!transport.service) return -2;
+    int32_t result = BRTransportValidateIdentity(transport, vendorID, productID, serialNumber);
+    if (result == 0) result = BRWriteVCP(transport, 0x60, input) ? 0 : -3;
+    CFRelease(transport.service);
+    return result;
 }
 
 int32_t BRDisplayGetChromaticities(uint32_t displayID, double *coordinates) {
@@ -440,6 +482,26 @@ static bool BRIsValidVCPReply(const uint8_t *reply, uint8_t code) {
     return BRChecksum(0x50, reply, 10) == reply[10];
 }
 
+int32_t BRDDCMakeGetVCPRequest(uint8_t code, uint8_t *packet, uint32_t capacity) {
+    if (packet == NULL || capacity < 4) return -1;
+    packet[0] = 0x82;
+    packet[1] = 0x01;
+    packet[2] = code;
+    // The API supplies the source-address prefix separately, but that byte is
+    // still part of the DDC checksum. m1ddc uses the same framing (MIT; NOTICE).
+    packet[3] = BRChecksum(0x6E ^ kDDCDataAddress, packet, 3);
+    return 0;
+}
+
+int32_t BRDDCDecodeVCPReply(uint8_t code, const uint8_t *reply, uint32_t length,
+                          uint16_t *currentValue, uint16_t *maximumValue) {
+    if (!reply || length < 11 || !currentValue || !maximumValue) return -1;
+    if (!BRIsValidVCPReply(reply, code)) return -2;
+    *maximumValue = ((uint16_t)reply[6] << 8) | reply[7];
+    *currentValue = ((uint16_t)reply[8] << 8) | reply[9];
+    return 0;
+}
+
 int32_t BRDDCReadVCP(uint32_t displayID,
                      uint8_t code,
                      uint16_t *currentValue,
@@ -448,8 +510,8 @@ int32_t BRDDCReadVCP(uint32_t displayID,
     BRDDCTransport transport = BRCreateTransport(displayID);
     if (transport.service == NULL) return -2;
 
-    uint8_t request[4] = {0x82, 0x01, code, 0x00};
-    request[3] = BRChecksum(0x6E, request, 3);
+    uint8_t request[4] = {0};
+    BRDDCMakeGetVCPRequest(code, request, sizeof(request));
     int32_t result = -4;
 
     for (int retry = 0; retry < 5; retry += 1) {
@@ -478,9 +540,7 @@ int32_t BRDDCReadVCP(uint32_t displayID,
             reply,
             (uint32_t)sizeof(reply)
         );
-        if (readResult == KERN_SUCCESS && BRIsValidVCPReply(reply, code)) {
-            *maximumValue = ((uint16_t)reply[6] << 8) | reply[7];
-            *currentValue = ((uint16_t)reply[8] << 8) | reply[9];
+        if (readResult == KERN_SUCCESS && BRDDCDecodeVCPReply(code, reply, sizeof(reply), currentValue, maximumValue) == 0) {
             result = 0;
             break;
         }
@@ -587,13 +647,8 @@ int32_t BRDisplayIsOnline(uint32_t displayID) {
     return CGDisplayIsOnline((CGDirectDisplayID)displayID) != 0 ? 1 : 0;
 }
 
-int32_t BRDisplayResolveKnownID(uint32_t previousDisplayID,
-                                uint32_t vendorID,
-                                uint32_t productID,
-                                uint32_t serialNumber,
-                                uint32_t *resolvedDisplayID) {
-    if (resolvedDisplayID == NULL) return BR_CONNECTION_DISPLAY_NOT_FOUND;
-    *resolvedDisplayID = 0;
+int32_t BRDisplayCopyConnectionCandidates(BRDisplayConnectionCandidate *displays,
+                                         uint32_t capacity) {
     BRGetDisplayListFunction getDisplayList = BRGetDisplayListSymbol();
     if (getDisplayList == NULL) return BR_CONNECTION_API_UNAVAILABLE;
 
@@ -604,11 +659,10 @@ int32_t BRDisplayResolveKnownID(uint32_t previousDisplayID,
         displayIDs,
         &displayCount
     );
-    if (listError != kCGErrorSuccess) return (int32_t)listError;
+    if (listError != kCGErrorSuccess) return -(int32_t)listError;
     if (displayCount > BR_MAXIMUM_DISPLAYS) displayCount = BR_MAXIMUM_DISPLAYS;
 
-    CGDirectDisplayID onlyMatch = kCGNullDirectDisplay;
-    uint32_t matchCount = 0;
+    uint32_t copied = 0;
     for (uint32_t index = 0; index < displayCount; index += 1) {
         CGDirectDisplayID candidate = displayIDs[index];
         uint32_t candidateVendor = CGDisplayVendorNumber(candidate);
@@ -617,23 +671,30 @@ int32_t BRDisplayResolveKnownID(uint32_t previousDisplayID,
         if (candidateVendor == 0 && candidateProduct == 0 && candidateSerial == 0) {
             continue;
         }
-        if (candidateVendor != vendorID || candidateProduct != productID ||
-            candidateSerial != serialNumber) {
-            continue;
+        BRDisplayConnectionCandidate result = {0};
+        result.display.displayID = candidate;
+        result.display.vendorID = candidateVendor;
+        result.display.productID = candidateProduct;
+        result.display.serialNumber = candidateSerial;
+        result.online = CGDisplayIsOnline(candidate) != 0;
+        CFDictionaryRef dictionary = CoreDisplay_DisplayCreateInfoDictionary(candidate);
+        if (dictionary != NULL) {
+            CFTypeRef location = CFDictionaryGetValue(dictionary, CFSTR("IODisplayLocation"));
+            if (location != NULL && CFGetTypeID(location) == CFStringGetTypeID()) {
+                BRCopyCFString((CFStringRef)location, result.display.ioLocation, sizeof(result.display.ioLocation));
+                io_registry_entry_t adapter = IORegistryEntryCopyFromPath(kIOMainPortDefault, (CFStringRef)location);
+                if (adapter != IO_OBJECT_NULL) {
+                    BRPopulateDisplayAttributes(adapter, &result.display);
+                    result.hasLiveIdentity = result.display.edidUUID[0] != '\0';
+                    IOObjectRelease(adapter);
+                }
+            }
+            CFRelease(dictionary);
         }
-        onlyMatch = candidate;
-        matchCount += 1;
-        if (candidate == (CGDirectDisplayID)previousDisplayID) {
-            *resolvedDisplayID = candidate;
-        }
+        if (displays != NULL && copied < capacity) displays[copied] = result;
+        copied += 1;
     }
-
-    if (matchCount == 0) return BR_CONNECTION_DISPLAY_NOT_FOUND;
-    if (matchCount == 1) {
-        *resolvedDisplayID = onlyMatch;
-        return 0;
-    }
-    return BR_CONNECTION_AMBIGUOUS_DISPLAY;
+    return (int32_t)copied;
 }
 
 static bool BROtherActiveDisplayExists(CGDirectDisplayID targetDisplayID) {

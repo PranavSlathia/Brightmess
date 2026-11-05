@@ -108,7 +108,7 @@ Native fixture captures: [Samsung destination · light](docs/source-deck.png) an
 
 ## Colors
 
-The Desk Plan palette gives the three jobs different grounds. Forest and cream stay fixed across appearances; pear labels the three source keys. Out of Register uses emerald glass, a lime stripe and an amber pixel in the header and menu bar. On the lower deck, the adaptive shelf, ground, ink, muted text, button face, outline and accent switch with macOS appearance. Use the adaptive accent for native sliders, toggles and actions.
+The Desk Plan palette gives the three jobs different grounds. Forest and cream stay fixed across appearances; pear labels the three source keys. The Brightest Mess sun uses warm yellow and one runaway amber ray in the header and menu bar. On the lower deck, the adaptive shelf, ground, ink, muted text, button face, outline and accent switch with macOS appearance. Use the adaptive accent for native sliders, toggles and actions.
 
 **The Command Rule.** A source key sends a request. Its colour does not identify the picture currently on the TV.
 
@@ -130,11 +130,40 @@ Use compact, gently rounded keys and smaller outlined window tiles. The large sy
 
 ## Components
 
-- **Status strip and menu-bar mark.** Wide TV on the left, upright screen on the right, matching lime stripes and one amber pixel beyond the bezel. Opening Source Deck lifts the stripes together and snaps the pixel into registration. Reduce Motion goes straight to the aligned pose; the mark is static at rest. The 23 × 17 original-colour mark keeps solar/attention cues above the TV and names its state for accessibility.
-- **App icon.** The same two screens sit on a forest glass tile in Finder and System Settings. This is a brand mark, not a live readout or current desktop map; actual geometry belongs in the display controls. See the [layered icon source](Assets/Brand/BRIGHTMESS.icon) and [native-size proof](docs/brand-icons.png).
-- **Source keys.** Show PS5, Mac mini and Smart TV side by side. Name the route beneath the action: HDMI 1, HDMI 3, Home or Input chooser. A chooser action gains an ellipsis. Keep pairing, setup and command feedback in the source band; disable keys until the remote is ready.
-- **Window shelf.** “To” names the opening display; “From” names the other connected displays. Each tile pairs a 24-point app icon (or fallback) with one eligible window. Keep “Move focused window” separate: it toggles the captured window to the other display, not necessarily to the shelf destination. Show a reason when the shelf is empty, and offer Accessibility access when required.
+- **Status strip and menu-bar mark.** A winking sun with a runaway amber ray. Opening Source Deck gives the ray one bounded flick; Reduce Motion skips it and the mark remains static at rest. Solar/attention badges and accessibility names describe state separately from the face. See [brand specification](Assets/Brand/README.md).
+- **App icon.** The same sun is the Finder and System Settings mark. It is a brand symbol, not a live brightness measurement; actual geometry belongs in the display controls. See the [layered icon source](Assets/Brand/BRIGHTMESS.icon) and [native-size proof](docs/brand-icons.png).
+- **Source keys.** Show PS5, Mac mini and Smart TV side by side. Beneath PS5 and Mac mini, show each action’s saved HDMI port, or “Input chooser” if configured. Show “Home” beneath Smart TV. A chooser action gains an ellipsis. Keep pairing, setup and command feedback in the source band; disable keys until the remote is ready.
+- **TV pairing.** “Pairing saved” means the Mac remembers the TV; show “TV connected” only when the remote is ready. Keep “Pair again with TV code” visible in setup even while the TV is offline. Show the secure six-character field, Verify and Cancel inline, and keep the saved pairing until the new code is verified.
+- **TV setup controls.** On the fixed forest band, give enabled setup buttons cream labels, a lightly tinted fill and a fine cream border. Dim all three when disabled. Use the dark appearance for native fields, pickers and disclosures inside this band only; the window shelf and display levels still follow macOS appearance.
+- **Window shelf.** “To” names the opening display; “From” names the other connected displays. Each tile pairs a 24-point app icon (or fallback) with one eligible window. “Open window picker” opens the dedicated Bring Here panel and shows its shortcut only when registered. Keep “Move focused window” separate: it toggles the captured window to the other display, not necessarily to the shelf destination. Show a reason when the shelf is empty, and offer Accessibility access when required.
 - **Display levels.** Each device owns its slider, step buttons, Follow Air switch, details and connection control. Distinguish last set, hardware readback, software dimming, unavailable and disconnected. Protect the last active display with a disabled “Last screen” action. Details, shortcuts and diagnostics expand inline.
+
+### Bring Here picker
+
+A compact, destination-first AppKit panel using the existing forest header, cream heading, adaptive green ground and system typography. It is 376 points wide with a 304-point base height, grows to six visible 48-point rows before scrolling, and adds space for an inline notice. The rounded panel uses the native window shadow and sits near the upper-middle of the destination's usable bounds.
+
+Each row has a native app icon or window-symbol fallback, an app name above a separate window-title or state line, and a bordered letter or number keycap. Truncated details remain available through help and accessibility labels. Selection has both a fill and outline; rows expose accessibility-selected state, and selection changes request an announcement naming the destination and window. Actual VoiceOver delivery still requires native acceptance.
+
+The opening destination is captured from the pointer display. Left/Right changes it in app and numbered lists; it stays fixed when the pointer moves. Release the trigger modifiers before selecting. A displayed initial retrieves a sole match or opens a numbered group; Up/Down or Tab/Shift-Tab and Return provide an alternative. The first nine group entries have number keys; further entries remain reachable through navigation and scrolling. `/` opens an explicit native search field, where typing filters app and window names and Left/Right edits text. Escape backs out of search or a group, then closes the picker. Recovery states pass native traversal and activation keys through to the focused Open Accessibility settings or Refresh choices button, with Return available to activate it.
+
+Loading, no eligible windows, no search matches, permission loss, missing or changed displays, unsupported windows and failed moves have explicit text states. A supported full-screen entry says it exits to move; the adapter capability-checks the exact window, waits for observed exit and verifies movement before focusing it. This is not universal full-screen or Split View support. Progress stays inside the panel; cancellation stops further steps but cannot undo an already-sent full-screen exit. TV inputs and brightness controls are separate from retrieval.
+
+Control–Option–Space is the configurable default attempted once by the shortcut setup, without replacing existing bindings or restoring a deliberately cleared binding. The 18 light/dark production-native picker fixtures establish rendered/source evidence only. [Native and installed verification](research/BRING-HERE-0.12.0.md) and [transition acceptance](research/WINDOW-TRANSITIONS-0.12.3.md) are recorded separately. No new shipping raster assets were introduced for this panel.
+
+### Arrange here
+
+The action row sits with window controls, separate from TV and brightness
+actions. It opens transparent, full-screen zone outlines on the pointer's
+display and a 540-point floating native control bar near its lower edge.
+Opaque forest label chips show app names and window titles. Smart/Equal changes
+the preview; window checkboxes and All/None choose participation. Apply and
+Undo are explicit; normal preview interaction must never move windows.
+
+Use the existing adaptive ground/ink and native control states. Reduce
+Transparency removes zone fill, retaining labels and outlines. No continuous
+animation or polling is needed. Enter applies, Command-Z undoes and Escape
+closes/stops. The optional shortcut and action icon use the existing editor.
+Fixture previews and native acceptance are tracked in [Arrange here](docs/ARRANGE-HERE.md).
 
 ## Do's and Don'ts
 
