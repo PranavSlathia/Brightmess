@@ -4,6 +4,7 @@ struct DeskWindowsView: View {
     @ObservedObject var windows: DeskWindows
     @ObservedObject var shortcuts: DeskShortcuts
     let requestAccess: () -> Void
+    var openPicker: (() -> Void)? = nil
     var body: some View {
         VStack(alignment:.leading,spacing:5) {
             HStack {
@@ -13,6 +14,11 @@ struct DeskWindowsView: View {
             }
             if !windows.sourceNames.isEmpty {
                 Text("From "+windows.sourceNames).font(.caption).foregroundStyle(DeckPaint.muted).lineLimit(1)
+            }
+            if let openPicker {
+                Button {openPicker()} label: {
+                    HStack(spacing:5){Text("Open window picker");if let key=shortcuts.activeBinding(.bringHere){Text(key.label)}}
+                }.controlSize(.small).help("Choose a window using visible letter keys")
             }
             if windows.choices.isEmpty {
                 HStack {
@@ -85,7 +91,7 @@ struct DeskShortcutEditor: View {
             HStack {
                 Text("Shortcuts & icons").font(.headline); Spacer()
                 Button("Use suggested keys") { shortcuts.suggestions() }
-                    .help("Fill only unassigned actions: ⌃⌥⌘M, ⌃⌥⌘1, ⌃⌥⌘2. Smart TV stays click-only.")
+                    .help("Fill only unassigned actions, including ⌃⌥Space for the window picker. Smart TV stays click-only.")
             }
             Text("Choose an icon or record a global shortcut. Esc cancels recording.").font(.caption).foregroundStyle(.secondary)
             ForEach(DeskAction.allCases) { action in
@@ -129,6 +135,9 @@ struct DeskShortcutEditor: View {
     @Published var mini = ""
     @Published var picker1 = false
     @Published var picker3 = false
+    @Published var ps5HDMI = 1
+    @Published var miniHDMI = 3
+    @Published var tvHost = ""
 }
 
 struct TVStrip: View {
@@ -136,13 +145,17 @@ struct TVStrip: View {
     @ObservedObject var shortcuts: DeskShortcuts
     let display: String
     @StateObject private var form = TVForm()
+    var previewMapping = false
+    var previewPairing = false
     var body: some View {
         VStack(alignment:.leading,spacing:8) {
             HStack {
                 Text("TV source").font(.system(size:27,weight:.bold)).tracking(-0.9)
                 Spacer()
-                if remote.paired != nil || remote.fixture { Text("TV paired").font(.caption) }
-                if remote.paired != nil && !remote.ready && !remote.busy { Button("Reconnect") { remote.reconnect() } }
+                if remote.paired != nil || remote.fixture { Text(remote.ready ? "TV connected" : "Pairing saved").font(.caption) }
+                if remote.paired != nil && !remote.ready {
+                    Button("Reconnect") { remote.reconnect() }.disabled(remote.pairingInProgress)
+                }
                     Button(form.setup ? "Close setup" : (remote.paired == nil && !remote.fixture ? "Pair TV" : "Set up")) {
                         form.setup.toggle(); form.mapping = false; form.code = ""
                     }.buttonStyle(.plain).padding(4).overlay(RoundedRectangle(cornerRadius:5).strokeBorder(DeckPaint.cream.opacity(0.55)))
@@ -150,41 +163,78 @@ struct TVStrip: View {
             HStack {
                 source(.ps5); source(.mac); source(.home)
             }
-            Text(remote.fixture ? "Remote ready":remote.notice).font(.caption).foregroundStyle(DeckPaint.cream)
+            Text(remote.notice).font(.caption).foregroundStyle(DeckPaint.cream)
             if form.setup {
                 if remote.wantsCode {
-                    HStack {
-                        SecureField("Code shown on TV",text:$form.code).onSubmit { submit() }
-                        Button("Verify") { submit() }.disabled(form.code.count != 6)
+                    VStack(alignment:.leading,spacing:6) {
+                        Text("Enter the code shown on your TV").font(.system(size:13,weight:.semibold))
+                        Text("Use the six-character code on the physical TV, not your Mac password.").font(.caption)
+                        HStack {
+                            SecureField("TV code",text:$form.code).foregroundStyle(Color(nsColor:.textColor))
+                                .accessibilityLabel("Six-character TV pairing code").onSubmit { submit() }
+                            Button("Verify") { submit() }.disabled(form.code.count != 6)
+                            Button("Cancel") { form.code = ""; remote.cancelPairing() }
+                        }
                     }
-                } else if !remote.busy {
-                    if remote.names.isEmpty { Text("No Android TVs found. Check Wi-Fi and Local Network access.").font(.caption) }
+                } else {
+                    Button(remote.paired == nil ? "Show code on TV" : "Pair again with TV code") {
+                        form.code = ""; remote.pairWithCode(display:display,address:form.tvHost)
+                    }.disabled(remote.pairingInProgress)
+                    Text("Shows a code on the TV. Your saved pairing stays until the new code is verified.").font(.caption)
+                    if remote.pairingInProgress { Button("Cancel pairing") { remote.cancelPairing() } }
                     ForEach(remote.names,id:\.self) { name in
-                        Button("Pair with "+name) { remote.pair(name,display:display) }
+                        Button("Show code on "+name) { remote.pair(name,display:display) }.disabled(remote.pairingInProgress)
                     }
+                    DisclosureGroup("TV not found? Use its network address") {
+                        Text("TV IPv4 address · find it in the TV's Network settings").font(.caption)
+                        TextField("For example, 192.168.1.20",text:$form.tvHost)
+                            .foregroundStyle(Color(nsColor:.textColor)).accessibilityLabel("TV local IPv4 address")
+                        Text("Then choose Show code on TV or Pair again above. The address alone never replaces pairing.").font(.caption)
+                    }.tint(DeckPaint.cream)
                 }
                 if let p = remote.paired {
                     Button("Open TV inputs") { remote.inputMenu() }.disabled(!remote.ready)
-                    Button(form.mapping ? "Close input mapping" : "Configure HDMI fallback…") {
+                    Button(form.mapping ? "Close input mapping" : "Configure TV inputs…") {
                         form.mapping.toggle(); form.ps5 = p.ps5; form.mini = p.mini; form.picker1 = p.ps5Picker; form.picker3 = p.miniPicker
+                        form.ps5HDMI = p.hdmi(.ps5); form.miniHDMI = p.hdmi(.mac)
                     }
                     if form.mapping {
-                        Text("Use IDs verified on this TV. Leave blank for standard HDMI keys. If neither works, use the input chooser.").font(.caption)
-                        TextField("HDMI 1 · verified TCL input ID",text:$form.ps5)
+                        Text("Assign devices to physical ports. Saving updates the buttons and their shortcuts; it does not switch the TV.").font(.caption)
+                        Picker("PS5 port",selection:$form.ps5HDMI) {
+                            ForEach(p.availableHDMIPorts,id:\.self) { Text("HDMI \($0)").tag($0) }
+                        }.onChange(of:form.ps5HDMI) { _,port in form.ps5 = p.hdmiInputs?[String(port)] ?? "" }
+                        Text("PS5 input ID (advanced)").font(.caption)
+                        TextField("Blank uses the standard HDMI key",text:$form.ps5)
+                            .foregroundStyle(Color(nsColor:.textColor)).accessibilityLabel("PS5 input ID")
                         Toggle("PS5 uses input chooser",isOn:$form.picker1)
-                        TextField("HDMI 3 · verified TCL input ID",text:$form.mini)
+                        Picker("Mac mini port",selection:$form.miniHDMI) {
+                            ForEach(p.availableHDMIPorts,id:\.self) { Text("HDMI \($0)").tag($0) }
+                        }.onChange(of:form.miniHDMI) { _,port in form.mini = p.hdmiInputs?[String(port)] ?? "" }
+                        Text("Mac mini input ID (advanced)").font(.caption)
+                        TextField("Blank uses the standard HDMI key",text:$form.mini)
+                            .foregroundStyle(Color(nsColor:.textColor)).accessibilityLabel("Mac mini input ID")
                         Toggle("Mac mini uses input chooser",isOn:$form.picker3)
-                        Button("Save mapping") { remote.map(ps5:form.ps5,mini:form.mini,ps5Picker:form.picker1,miniPicker:form.picker3) }
+                        Text("Saved port IDs come from this TV, not a device detector. Blank IDs use standard keys, which some TVs ignore. Enable the input chooser only if it works on your TV.").font(.caption)
+                        Button("Save mapping") { remote.map(ps5:form.ps5,mini:form.mini,ps5Picker:form.picker1,miniPicker:form.picker3,ps5HDMI:form.ps5HDMI,miniHDMI:form.miniHDMI) }
                     }
                 }
             }
-        }.controlSize(.small).padding(.horizontal,16).padding(.vertical,9)
+        }.controlSize(.small).buttonStyle(TVSetupButtonStyle())
+        .padding(.horizontal,16).padding(.vertical,9)
         .frame(maxWidth:.infinity,alignment:.leading).foregroundStyle(DeckPaint.cream).background(DeckPaint.forest)
+        .environment(\.colorScheme,.dark)
+        .onAppear {
+            if previewPairing { form.setup = true }
+            if previewMapping, let p = remote.paired {
+                form.setup = true; form.mapping = true; form.ps5HDMI = p.hdmi(.ps5); form.miniHDMI = p.hdmi(.mac)
+                form.ps5 = p.ps5; form.mini = p.mini; form.picker1 = p.ps5Picker; form.picker3 = p.miniPicker
+            }
+        }
     }
     private func submit() { remote.verify(form.code); form.code = "" }
     private func source(_ a: DeskAction) -> some View {
         let picker = remote.usesPicker(a)
-        let route = picker ? "Input chooser" : (a == .ps5 ? "HDMI 1" : a == .mac ? "HDMI 3":"Home")
+        let route = remote.routeLabel(a)
         return Button { remote.activate(a) } label: {
             VStack(alignment:.leading,spacing:2) {
                 HStack(alignment:.top) {

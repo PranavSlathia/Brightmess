@@ -27,8 +27,12 @@ struct BrightnessPopoverView: View {
                 ScrollView {
                     VStack(alignment:.leading,spacing:0) {
                         SourceDeckTV(remote:model.tv,shortcuts:model.shortcuts,displays:displays)
-                        DeskWindowsView(windows:model.windows,shortcuts:model.shortcuts,requestAccess:model.requestKeyboardAccess)
+                        DeskWindowsView(windows:model.windows,shortcuts:model.shortcuts,requestAccess:model.requestKeyboardAccess,openPicker:model.openWindowPicker)
                         levels
+                        if let target = model.samsungSources.target, !displays.contains(where: { $0.id == target.id }) {
+                            SamsungSourceControls(sources: model.samsungSources, shortcuts: model.shortcuts, now: model.readbackNow)
+                                .padding(16)
+                        }
                         if let id=model.detailedDisplay,let state=displays.first(where:{$0.id==id}){
                             DeskScreenStrip(model:model,state:state,detailsOnly:true).id("detail-"+id)
                         }
@@ -43,6 +47,7 @@ struct BrightnessPopoverView: View {
                 .onChange(of:model.detailedDisplay){_,id in if let id{proxy.scrollTo("detail-"+id,anchor:.top)}}
                 .onAppear {
                     if model.actionsOpen {DispatchQueue.main.async {proxy.scrollTo("desk.shortcuts",anchor:.bottom)}}
+                    else if let id = model.detailedDisplay { DispatchQueue.main.async { proxy.scrollTo("detail-" + id, anchor: .top) } }
                 }
             }
             footer
@@ -177,12 +182,18 @@ private struct DeskScreenStrip: View {
             (!connected || model.displays.filter { $0.connectionState.isConnected }.count > 1)
     }
     private var level: UInt16? { model.desiredSlider[state.id] ?? state.brightness }
+    private var hardwareAge: String {
+        guard let at = state.lastReadAt else { return "not read yet" }
+        let seconds = max(0, Int(model.readbackNow.timeIntervalSince(at)))
+        return seconds < 1 ? "now" : seconds < 60 ? "\(seconds)s ago" : "\(seconds / 60)m ago"
+    }
     private var output: String {
         guard connected else { return "Disconnected" }
         guard let b = state.brightness else { return "Not available" }
-        switch state.brightnessOrigin {
+        switch state.readingKind(at: model.readbackNow) {
         case .lastSet: return "\(b)% · last hardware command"
-        case .liveHardware: return "\(b)% · hardware readback"
+        case .liveHardware: return "\(b)% · hardware readback · \(hardwareAge)"
+        case .staleHardware: return "\(b)% · older hardware reading · \(hardwareAge)"
         case .liveSoftware: return "\(b)% · software dimming"
         case .unavailable: return "Not available"
         }
@@ -196,9 +207,10 @@ private struct DeskScreenStrip: View {
     private var origin:String {
         guard connected else{return "Disconnected"}
         if state.brightness==nil {return "Not available"}
-        switch state.brightnessOrigin {
-        case .lastSet:return "Last set"
-        case .liveHardware:return "Hardware readback"
+        switch state.readingKind(at: model.readbackNow) {
+        case .lastSet:return "\(state.brightness!)% · last set"
+        case .liveHardware:return "\(state.brightness!)% · read \(hardwareAge)"
+        case .staleHardware:return "Older hardware reading"
         case .liveSoftware:return "Software dimming"
         case .unavailable:return "Not available"
         }
@@ -232,10 +244,17 @@ private struct DeskScreenStrip: View {
                         .buttonStyle(.borderless).accessibilityLabel("Display details for "+title)
                         .accessibilityValue(expanded ? "Expanded":"Collapsed")
                 }.font(.system(size:11,weight:.medium))
-                Button {model.toggleConnection(displayID:state.id)} label:{
-                    Label(connected && !mayConnect && model.connectionControlAvailable ? "Last screen":connectionLabel,
-                          systemImage:connected ? (mayConnect ? "eject":"lock"):"cable.connector")
-                }.controlSize(.small).disabled(!mayConnect).help(connectionHint).accessibilityLabel(connectionLabel+" "+title)
+                HStack(spacing: 8) {
+                    Button {model.toggleConnection(displayID:state.id)} label:{
+                        Label(connected && !mayConnect && model.connectionControlAvailable ? "Last screen":connectionLabel,
+                              systemImage:connected ? (mayConnect ? "eject":"lock"):"cable.connector")
+                    }.controlSize(.small).disabled(!mayConnect).help(connectionHint).accessibilityLabel(connectionLabel+" "+title)
+                    if SamsungSources.supports(state.display) {
+                        Button("Sources") { model.toggleDetails(state.id) }
+                            .buttonStyle(.borderless).font(.system(size:11,weight:.medium))
+                            .accessibilityLabel("Samsung input sources and setup")
+                    }
+                }
                 if let error=frontError {Text(error).font(.caption).foregroundStyle(DeckPaint.muted)}
             }.padding(.trailing,7).frame(maxWidth:.infinity,alignment:.leading)
         }
@@ -258,6 +277,16 @@ private struct DeskScreenStrip: View {
                 Text("\(Int(w)) × \(Int(h)) desktop points" + (connected ? "" : " · last known")).font(.caption)
             }
             if let target = state.mappedTarget { Text("Mapped target: \(target)%").font(.callout) }
+            if let actual = state.hardwareBrightness, !state.hardwareReadingIsFresh(at: model.readbackNow) {
+                Text("Hardware: \(actual)% · read \(hardwareAge)").font(.caption)
+                if let command = state.lastCommandAt, let read = state.lastReadAt, command > read {
+                    Text("The latest hardware command has not been verified yet.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if SamsungSources.supports(state.display) {
+                SamsungSourceControls(sources: model.samsungSources, shortcuts: model.shortcuts, now: model.readbackNow)
+                Divider()
+            }
             if !mayConnect { Text(connectionHint).font(.caption).foregroundStyle(.secondary) }
             if let note = state.lastError, frontError == nil { Text(note).font(.caption).foregroundStyle(.secondary) }
             Text(state.calibration.summary).font(.caption)

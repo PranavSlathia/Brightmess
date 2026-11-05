@@ -30,3 +30,11 @@ public enum DisplayConnectionPolicy {
         connectedDisplayCount > 1
     }
 }
+
+public enum HardwareReadbackPolicy {
+    public static let freshness: TimeInterval = 15
+    public static func isFresh(readAt: Date?, lastWriteAt: Date?, now: Date) -> Bool {
+        guard let readAt, now >= readAt, now.timeIntervalSince(readAt) <= freshness else { return false }
+        return lastWriteAt.map { readAt >= $0 } ?? true
+    }
+}

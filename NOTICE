@@ -1,13 +1,20 @@
 BRIGHTMESS third-party notices
 ====================================
 
+Rectangle (rxhanson/Rectangle, MIT) informed the narrow AX-to-CGWindowID bridge
+and exact-window metadata lookup. BRIGHTMESS's guarded runtime lookup and geometry
+resolver are original implementations; no Rectangle source module is bundled.
+https://github.com/rxhanson/Rectangle
+
 The TV remote's Android Remote v2 pairing, messaging and commands adapt the
 protocol used by Universal TV Remote for macOS (devasheeshG, project MIT)
 and its vendored AndroidTVRemoteControl. No other TV brands are bundled.
 
-The MagiConnect protocol notes and MacTV informed separate hardware tests.
-Neither project is bundled or required at runtime. See research/LIGHT-DESK-0.9.md
-for the upstream references and the path actually used on the TCL.
+The MagiConnect protocol notes (DusKing1/ha-tcl-tv, MIT) informed the bounded,
+read-only native TCL LAN discovery client and separate input-ID research.
+MacTV informed separate HDMI-CEC hardware tests. Neither upstream app or
+service is bundled or required at runtime. See research/LIGHT-DESK-0.9.md
+and research/TV-RECOVERY-0.11.2.md for references and verification boundaries.
 
 AndroidTVRemoteControl — MIT License
 Copyright (c) 2023 odyshewroman

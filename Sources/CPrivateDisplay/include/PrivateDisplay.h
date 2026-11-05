@@ -48,6 +48,20 @@ typedef struct {
 /// Pass NULL/0 to query the required capacity.
 int32_t BRDDCCopyExternalDisplays(BRExternalDisplayInfo *displays, uint32_t capacity);
 
+/// Pure packet builder, shared by production reads and protocol regression tests.
+/// Writes a four-byte GET-VCP request (without the source-address prefix).
+int32_t BRDDCMakeGetVCPRequest(uint8_t code, uint8_t *packet, uint32_t capacity);
+/// Pure reply validation/decoding. Never accepts a null, mismatched, unsupported
+/// or checksum-invalid reply as a hardware measurement.
+int32_t BRDDCDecodeVCPReply(uint8_t code, const uint8_t *reply, uint32_t length,
+                          uint16_t *currentValue, uint16_t *maximumValue);
+/// Read-only, direct EDID identity check on the selected DDC channel.
+int32_t BRDDCValidateIdentity(uint32_t displayID, uint32_t vendorID,
+                             uint32_t productID, uint32_t serialNumber);
+/// Validate direct EDID and send VCP 0x60 over that same retained service.
+int32_t BRDDCWriteInputVerified(uint32_t displayID, uint32_t vendorID,
+                               uint32_t productID, uint32_t serialNumber, uint16_t input);
+
 /// Reads one MCCS VCP feature from one CoreGraphics display.
 /// Returns 0 only for a checksum-valid reply from the monitor.
 int32_t BRDDCReadVCP(uint32_t displayID,
@@ -67,14 +81,18 @@ int32_t BRDDCWriteBrightnessAll(uint16_t brightness);
 /// available on this macOS version, otherwise 0.
 int32_t BRDisplayConnectionAvailable(void);
 
-/// Resolves a display from the WindowServer list, which includes displays that
-/// were logically disconnected and are absent from the public online list.
-/// Returns 0 on success and writes the current CoreGraphics display ID.
-int32_t BRDisplayResolveKnownID(uint32_t previousDisplayID,
-                                uint32_t vendorID,
-                                uint32_t productID,
-                                uint32_t serialNumber,
-                                uint32_t *resolvedDisplayID);
+typedef struct {
+    BRExternalDisplayInfo display;
+    uint8_t online;
+    /// EDID obtained from the current IORegistry endpoint, not cached by CG.
+    uint8_t hasLiveIdentity;
+} BRDisplayConnectionCandidate;
+
+/// Read-only WindowServer slots, including disabled displays and stale slots.
+/// Negative values indicate failure. Callers must resolve by current physical
+/// identity/port, not count cached vendor/model/serial matches as monitors.
+int32_t BRDisplayCopyConnectionCandidates(BRDisplayConnectionCandidate *displays,
+                                         uint32_t capacity);
 
 /// Connects or disconnects one display for the current login session. A
 /// disconnect is refused if it would leave no other active display.

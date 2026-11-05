@@ -100,6 +100,7 @@ public struct ExternalDisplay: Identifiable, Hashable, Codable, Sendable {
 public struct DDCValue: Equatable, Sendable {
     public let current: UInt16
     public let maximum: UInt16
+    public init(current: UInt16, maximum: UInt16) { self.current = current; self.maximum = maximum }
 
     public var percentage: UInt16 {
         guard maximum > 0 else { return 0 }
@@ -174,6 +175,32 @@ public final class ExternalDDCController: @unchecked Sendable {
         }
     }
 
+    private func inputChannel(for display: ExternalDisplay) throws -> UInt32 {
+        let id = try DisplayConnectionController().currentDisplayID(for: display)
+        guard BRDDCValidateIdentity(id, display.vendorID, display.productID, display.serialNumber) == 0 else {
+            throw BrightnessHardwareError.displayNotFound(display.name + " (no verified DDC channel)")
+        }
+        return id
+    }
+
+    public func readInput(of display: ExternalDisplay) throws -> UInt16 {
+        let id = try inputChannel(for: display)
+        var current: UInt16 = 0, maximum: UInt16 = 0
+        let result = BRDDCReadVCP(id, 0x60, &current, &maximum)
+        guard result == 0, current > 0, current <= 255 else {
+            throw BrightnessHardwareError.ddcReadFailed(display.name + " input", result)
+        }
+        // Input-source maximum is often a count, not the largest allowed code.
+        return current
+    }
+
+    public func setInput(_ value: UInt16, on display: ExternalDisplay) throws {
+        guard value > 0, value <= 255 else { throw BrightnessHardwareError.ddcWriteFailed(display.name, -1) }
+        let id = try DisplayConnectionController().currentDisplayID(for: display)
+        let result = BRDDCWriteInputVerified(id, display.vendorID, display.productID, display.serialNumber, value)
+        guard result == 0 else { throw BrightnessHardwareError.ddcWriteFailed(display.name + " input", result) }
+    }
+
     /// Requests MCCS standby (2) or on (1). Some monitors stop accepting DDC
     /// after standby; the menu instead uses logical disconnect/reconnect.
     public func setPower(on: Bool, for display: ExternalDisplay) throws {
@@ -204,7 +231,7 @@ public final class ExternalDDCController: @unchecked Sendable {
         return successes
     }
 
-    private static func string<T>(from tuple: T) -> String {
+    static func string<T>(from tuple: T) -> String {
         var copy = tuple
         return withUnsafePointer(to: &copy) { pointer in
             pointer.withMemoryRebound(to: CChar.self, capacity: MemoryLayout<T>.size) {

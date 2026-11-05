@@ -45,8 +45,8 @@ plutil -insert CFBundleDisplayName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
 plutil -insert CFBundleIconFile -string BRIGHTMESS "$INFO"
 plutil -insert CFBundleIconName -string BRIGHTMESS "$INFO"
-VERSION=0.10.2
-BUILD=14
+VERSION=0.12.3
+BUILD=26
 plutil -insert CFBundleShortVersionString -string "$VERSION" "$INFO"
 plutil -insert CFBundleVersion -string "$BUILD" "$INFO"
 plutil -insert NSLocalNetworkUsageDescription -string "Find your selected Android TV and send input commands on your local network." "$INFO"
@@ -54,11 +54,36 @@ plutil -insert NSBonjourServices -json '["_androidtvremote2._tcp"]' "$INFO"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$INFO"
 plutil -insert LSUIElement -bool true "$INFO"
 plutil -insert NSHighResolutionCapable -bool true "$INFO"
-# This is a local build. Never automatically pick a certificate from Keychain:
-# find-identity can list a certificate whose online trust has been revoked.
-SIGNING_IDENTITY="${BR_SIGNING_IDENTITY:--}"
+# Keep a stable identity across updates. Never auto-pick from find-identity:
+# its list can include a revoked certificate. Never silently fall back to ad hoc.
+SIGNING_IDENTITY="${BR_SIGNING_IDENTITY:-}"
+SIGNING_CONFIG="$HOME/.config/brightness-relay/signing-identity"
+if [[ -z "$SIGNING_IDENTITY" && -f "$SIGNING_CONFIG" ]]; then
+  IFS= read -r SIGNING_IDENTITY < "$SIGNING_CONFIG"
+fi
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+  print -u2 'Set BR_SIGNING_IDENTITY to a verified certificate fingerprint, or save it in ~/.config/brightness-relay/signing-identity. Installed app not changed.'
+  exit 1
+fi
+if [[ "$SIGNING_IDENTITY" == - ]]; then
+  (( STAGE_ONLY )) || { print -u2 'Ad-hoc signing is only allowed with --stage-only; it breaks identity continuity on updates.'; exit 1; }
+else
+  /usr/bin/swift "$ROOT/scripts/verify-signing-identity.swift" "$SIGNING_IDENTITY"
+fi
 codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$STAGED_APP"
 codesign --verify --strict "$STAGED_APP"
+if [[ -d "$OLD" && "$SIGNING_IDENTITY" != - ]]; then
+  OLD_SIGNATURE="$(codesign -dv "$OLD" 2>&1)" || { print -u2 'Cannot inspect installed signature; update stopped.'; exit 1; }
+  # Do not pipe codesign into grep -q under pipefail: its early exit can cause
+  # SIGPIPE and misclassify an ad-hoc predecessor as a certificate-signed app.
+  if [[ "$OLD_SIGNATURE" != *'Signature=adhoc'* ]]; then
+    OLD_REQUIREMENT="$(codesign -d -r- "$OLD" 2>&1 | sed -n 's/^designated => //p')"
+    [[ -n "$OLD_REQUIREMENT" ]] || { print -u2 'Cannot establish installed signing identity; update stopped.'; exit 1; }
+    codesign --verify --strict -R "=$OLD_REQUIREMENT" "$STAGED_APP" || {
+      print -u2 'New app does not match the installed signing identity. Installed app was not changed.'; exit 1;
+    }
+  fi
+fi
 if (( STAGE_ONLY )); then
   print "$STAGED_APP"
   exit 0

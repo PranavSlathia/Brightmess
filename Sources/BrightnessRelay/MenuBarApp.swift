@@ -32,6 +32,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     private let shadeController = DisplayShadeController()
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
+    private let bringHere = BringHerePanel()
     private var didStart = false
     private var terminationSignal: DispatchSourceSignal?
     private var markMode:DeskMark.Mode = .linked
@@ -53,9 +54,19 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         model.setKeyboardAccessHandler { [weak keyController] in
             keyController?.requestAccessibility()
         }
+        bringHere.requestAccess = {
+            if let url=URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {NSWorkspace.shared.open(url)}
+        }
+        model.openWindowPicker = {[weak self] in self?.openWindowPicker()}
         model.shortcuts.perform = { [weak self] action in
             guard let self else { return }
-            if action == .move { self.model.windows.toggle(captured:self.popover.isShown) }
+            if action == .bringHere {self.openWindowPicker()}
+            else if action == .move { self.model.windows.toggle(captured:self.popover.isShown) }
+            else if let port = action.monitorPort {
+                let ready = self.model.samsungSources.canActivate(port)
+                self.model.samsungSources.activate(port)
+                if !ready { NSSound.beep() }
+            }
             else { self.model.tv.activate(action); if !self.model.tv.ready { NSSound.beep() } }
         }
         model.shortcuts.tvNeeded = { [weak model] needed in model?.tv.keepForShortcuts(needed) }
@@ -67,10 +78,18 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
                 result["panelVisible"] = self.popover.isShown
                 result["tvPaired"] = self.model.tv.paired != nil
                 result["tvRemoteReady"] = self.model.tv.ready
+                result["tvNotice"] = self.model.tv.notice
+                result["tvConnectionError"] = self.model.tv.lastConnectionError ?? NSNull() as Any
+                if let tv = self.model.tv.paired {
+                    result["tvInputs"] = ["ps5": tv.routeLabel(.ps5), "mac": tv.routeLabel(.mac),
+                        "ps5InputID": tv.ps5, "macInputID": tv.mini]
+                }
                 result["deskActions"] = self.model.shortcuts.diagnostics
                 result["windowMoves"] = self.model.windows.successfulMoves
+                result["bringHere"] = self.bringHere.model.diagnostics
                 result["windowAccessibility"] = AXIsProcessTrusted()
                 result["tvLastSent"] = self.model.tv.lastSent ?? NSNull() as Any
+                result["samsungSources"] = self.model.samsungSources.diagnostics
                 result["uiBuild"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? NSNull()
                 return result
             }
@@ -237,12 +256,13 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     @objc private func screenParametersChanged() {
         setStatusIcon(markMode)
         model.windows.topologyChanged()
+        bringHere.model.topologyChanged()
         model.colorConfigurationChanged()
         shadeController.updateFrames()
         model.refreshDisplays()
     }
 
-    @objc private func willSleep() { model.restoreColors(); model.shortcuts.suspendInput(); model.tv.sleeping(true) }
+    @objc private func willSleep() { bringHere.dismiss(restoring:false);model.samsungSources.stop(); model.restoreColors(); model.shortcuts.suspendInput(); model.tv.sleeping(true) }
     @objc private func didWake() {
         model.resumeColors()
         model.tv.sleeping(false)
@@ -259,6 +279,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         model.setVisible(false); model.shortcuts.cancelRecording(); model.windows.close(); model.tv.close()
     }
     private func openPopover(clickedScreen:NSScreen?=nil) {
+        if bringHere.model.visible {bringHere.dismiss(restoring:false)}
         guard let button = statusItem.button else { return }
         guard !popover.isShown else { return }
         let destination=clickedScreen ?? button.window?.screen
@@ -282,6 +303,11 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         RelayLog.write("Brightness controller popover opened")
     }
 
+    private func openWindowPicker(){
+        if popover.isShown {popover.performClose(nil)}
+        bringHere.toggle()
+    }
+
     private func show(_ status: AppliedBrightnessStatus) {
         setStatusIcon(status.source == "solar-fallback" ? .solar : .linked)
     }
@@ -300,7 +326,9 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
 
     func applicationWillTerminate(_ notification: Notification) {
         markCue.reset()
+        bringHere.stop()
         model.shortcuts.stop(); model.windows.stop(); model.tv.shutdown()
+        model.samsungSources.stop()
         model.restoreColors()
         keyController.stop()
     }
@@ -314,9 +342,11 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
 
 @MainActor
 final class BrightnessMenuModel: ObservableObject {
+    var openWindowPicker:(()->Void)?
     let windows = DeskWindows()
     let tv: TVRemote
     let shortcuts: DeskShortcuts
+    let samsungSources: SamsungSources
     @Published var actionsOpen = false
     @Published private(set) var displays: [ManagedDisplayState]
     @Published private(set) var receiverStatus = "Starting receiver…"
@@ -327,6 +357,7 @@ final class BrightnessMenuModel: ObservableObject {
     @Published private(set) var colorStates: [String: DisplayColorState] = [:]
     @Published private(set) var ambientDetail = "Waiting for Air colour helper"
     @Published private(set) var sourceAge = "No Air reading yet"
+    @Published private(set) var readbackNow = Date()
     let connectionControlAvailable: Bool
 
     private let server: RelayHTTPServer
@@ -372,8 +403,10 @@ final class BrightnessMenuModel: ObservableObject {
         #endif
         self.server = server
         self.coordinator = server.displayCoordinator
+        samsungSources = SamsungSources(coordinator: server.displayCoordinator, defaults: shortcutDefaults, fixture: fixture)
         self.displays = server.displayCoordinator.snapshot()
         self.connectionControlAvailable = server.displayCoordinator.connectionControlAvailable
+        samsungSources.updateDisplays(displays)
         colorController.onChanged = { [weak self] states in self?.colorStates = states }
         colorController.updateDisplays(displays)
     }
@@ -388,16 +421,21 @@ final class BrightnessMenuModel: ObservableObject {
             }
             editingSliders.removeAll()
         }
-        if visible { refreshSourceAge() }
+        if visible { refreshSourceAge(); coordinator.refreshReadbacksIfDue(); samsungSources.refresh() }
         updateAgeTimer()
     }
 
     private func updateAgeTimer() {
         timer?.invalidate(); timer = nil
-        guard panelVisible && toolsOpen else { return }
+        guard panelVisible else { return }
         refreshSourceAge()
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshSourceAge() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.readbackNow = Date()
+                if self.toolsOpen { self.refreshSourceAge() }
+                self.coordinator.refreshReadbacksIfDue()
+            }
         }
         t.tolerance = 0.15
         RunLoop.main.add(t, forMode: .common); timer = t
@@ -434,7 +472,9 @@ final class BrightnessMenuModel: ObservableObject {
 
 
     func updateDisplays(_ updated: [ManagedDisplayState]) {
+        readbackNow = Date()
         displays = updated
+        samsungSources.updateDisplays(updated)
         if let detailedDisplay, !updated.contains(where: { $0.id == detailedDisplay }) { self.detailedDisplay = nil; resetID = nil }
         colorController.updateDisplays(updated)
     }

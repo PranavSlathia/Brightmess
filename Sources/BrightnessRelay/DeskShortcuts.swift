@@ -4,21 +4,27 @@ import BrightnessCore
 
 /// Stable preference keys, independent of device order and keyboard layout.
 enum DeskAction: String, CaseIterable, Identifiable {
-    case move, ps5, mac, home
+    case bringHere, move, ps5, mac, home, samsungDP, samsungHDMI1, samsungHDMI2
     var id: Self { self }
     var name: String {
-        switch self { case .move: return "Move window"; case .ps5: return "PS5"
-        case .mac: return "Mac mini"; case .home: return "Smart TV" }
+        switch self { case .bringHere:return "Bring a window here";case .move: return "Move window"; case .ps5: return "PS5"
+        case .mac: return "Mac mini"; case .home: return "Smart TV"
+        case .samsungDP: return "Samsung · DisplayPort"; case .samsungHDMI1: return "Samsung · HDMI 1"; case .samsungHDMI2: return "Samsung · HDMI 2" }
     }
     var symbol: String {
-        switch self { case .move: return "rectangle.2.swap"; case .ps5: return "gamecontroller"
-        case .mac: return "desktopcomputer"; case .home: return "house" }
+        switch self { case .bringHere:return "macwindow";case .move: return "rectangle.2.swap"; case .ps5: return "gamecontroller"
+        case .mac: return "desktopcomputer"; case .home: return "house"
+        case .samsungDP: return "display"; case .samsungHDMI1, .samsungHDMI2: return "laptopcomputer" }
     }
     var suggested: DeskChord? {
+        if self == .bringHere {return DeskChord(code:UInt32(kVK_Space),mods:UInt32(controlKey|optionKey),label:"⌃⌥Space")}
         let key: (Int,String)
         switch self { case .move: key = (kVK_ANSI_M,"M"); case .ps5: key = (kVK_ANSI_1,"1")
-        case .mac: key = (kVK_ANSI_2,"2"); case .home: return nil }
+        case .mac: key = (kVK_ANSI_2,"2"); case .bringHere, .home, .samsungDP, .samsungHDMI1, .samsungHDMI2: return nil }
         return DeskChord(code:UInt32(key.0),mods:UInt32(controlKey|optionKey|cmdKey),label:"⌃⌥⌘"+key.1)
+    }
+    var monitorPort: MonitorPort? {
+        switch self { case .samsungDP: return .displayPort; case .samsungHDMI1: return .hdmi1; case .samsungHDMI2: return .hdmi2; default: return nil }
     }
     static let symbols = [
         ("rectangle.2.swap","Swap windows"),("macwindow","Window"),("arrow.left.arrow.right","Arrows"),
@@ -100,6 +106,13 @@ struct DeskChord: Codable, Equatable {
         },types.count,&types,Unmanaged.passUnretained(self).toOpaque(),&handler)
         guard status == noErr else { notice = "Could not start global shortcuts (\(status))."; return }
         restoreBindings()
+        offerBringHereDefault()
+    }
+    private func offerBringHereDefault(){
+        let key="Brightmess.BringHere.defaultOffered.v1"
+        guard !defaults.bool(forKey:key) else{return}
+        defaults.set(true,forKey:key)
+        if binding(.bringHere)==nil,let chord=DeskAction.bringHere.suggested {_ = bind(.bringHere,chord)}
     }
     private func restoreBindings() {
         for action in DeskAction.allCases {
@@ -194,8 +207,11 @@ struct DeskChord: Codable, Equatable {
         },release:{ _ in released += 1 })
         fake.perform = { actions.append($0) }; fake.tvNeeded = { wantsTV = $0 }
         fake.restoreBindings(); fake.suggestions()
+        fake.offerBringHereDefault()
+        try require(fake.binding(.bringHere)==DeskAction.bringHere.suggested,"Bring Here default missing")
         try require(fake.binding(.move) == legacy && fake.binding(.home) == nil && wantsTV,"Legacy move binding, click-only Home, or background demand lost.")
         try require(fake.binding(.ps5) == DeskAction.ps5.suggested && fake.binding(.mac) == DeskAction.mac.suggested,"TV shortcut assignments incorrect.")
+        try require([DeskAction.samsungDP,.samsungHDMI1,.samsungHDMI2].allSatisfy { fake.binding($0) == nil }, "Samsung shortcuts must start unassigned")
         let macID = fake.registrations[.mac]!.id
         fake.receive(macID,down:true); fake.receive(macID,down:true); fake.receive(macID,down:false); fake.receive(macID,down:true)
         try require(actions == [.mac,.mac],"A held key repeated a TV action.")
@@ -210,6 +226,8 @@ struct DeskChord: Codable, Equatable {
         fake.clear(.ps5); try require(wantsTV,"Disabling one binding closed the other TV session.")
         fake.clear(.mac); try require(!wantsTV,"TV kept running after last TV shortcut was cleared.")
         fake.clear(.move); try require(fixture(defaults:defaults).binding(.move) == nil,"Cleared legacy shortcut reappeared.")
+        fake.clear(.bringHere);fake.offerBringHereDefault()
+        try require(fake.binding(.bringHere)==nil,"Cleared picker shortcut reappeared")
         fake.stop()
     }
     #endif

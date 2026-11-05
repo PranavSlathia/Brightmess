@@ -11,6 +11,7 @@ enum DisplayControlMethod: String, Sendable {
 enum DisplayBrightnessOrigin: String, Sendable {
     case unavailable
     case liveHardware
+    case staleHardware
     case lastSet
     case liveSoftware
 }
@@ -38,8 +39,17 @@ struct ManagedDisplayState: Identifiable, Sendable {
     var mappedTarget: UInt16?
     var learningNote: String?
     var extraDim: UInt16 = 0
+    var hardwareBrightness: UInt16?
+    var lastCommandAt: Date?
 
     var id: String { display.id }
+    func hardwareReadingIsFresh(at now: Date) -> Bool {
+        connectionState.isConnected && hardwareBrightness != nil && brightnessOrigin == .liveHardware &&
+            HardwareReadbackPolicy.isFresh(readAt: lastReadAt, lastWriteAt: lastCommandAt, now: now)
+    }
+    func readingKind(at now: Date) -> DisplayBrightnessOrigin {
+        brightnessOrigin == .liveHardware && !hardwareReadingIsFresh(at: now) ? .staleHardware : brightnessOrigin
+    }
 }
 
 struct DisplayApplySummary: Sendable {
@@ -59,6 +69,12 @@ protocol DisplayDriver {
     func displays() -> [ExternalDisplay]
     func set(percentage: UInt16, on display: ExternalDisplay) throws
     func readBrightness(of display: ExternalDisplay) throws -> DDCValue
+    func readInput(of display: ExternalDisplay) throws -> UInt16
+    func setInput(_ value: UInt16, on display: ExternalDisplay) throws
+}
+extension DisplayDriver {
+    func readInput(of display: ExternalDisplay) throws -> UInt16 { throw BrightnessHardwareError.displayNotFound(display.name + " input") }
+    func setInput(_ value: UInt16, on display: ExternalDisplay) throws { throw BrightnessHardwareError.displayNotFound(display.name + " input") }
 }
 extension ExternalDDCController: DisplayDriver {}
 
@@ -93,6 +109,23 @@ final class DisplayCoordinator: @unchecked Sendable {
     private var ramps: [String: LevelTransition] = [:]
     private var ticks: [String: DispatchWorkItem] = [:]
     private var lastHardware: [String: Double] = [:]
+    private var readbackWork: [String: DispatchWorkItem] = [:]
+    private var nextReadback: [String: Double] = [:]
+    private var hardwareReadAttempts = 0
+    var readAttempts: Int { queue.sync { hardwareReadAttempts } }
+
+    func readMonitorInput(_ display: ExternalDisplay) async throws -> UInt16 {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async { [self] in continuation.resume(with: Result { try hardware.readInput(of: display) }) }
+        }
+    }
+    func writeMonitorInput(_ value: UInt16, on display: ExternalDisplay) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async { [self] in
+                continuation.resume(with: Result { try hardware.setInput(value, on: display) })
+            }
+        }
+    }
     private struct Gesture { let bin: Int?; var stable: Bool; var level: UInt16 }
     private var gestures: [String: Gesture] = [:]
     private var keyEnds: [String: DispatchWorkItem] = [:]
@@ -159,13 +192,56 @@ final class DisplayCoordinator: @unchecked Sendable {
     func refresh(readHardware: Bool = true) {
         queue.async { [weak self] in
             guard let self else { return }
+            let previous = Dictionary(uniqueKeysWithValues: self.states.map { ($0.id, $0) })
             self.states = self.enumerateDisplays(preserving: self.states)
-            if readHardware {
-                for index in self.states.indices
-                    where self.states[index].connectionState.isConnected
-                {
+            for index in self.states.indices {
+                let current = self.states[index]
+                guard current.connectionState.isConnected else {
+                    self.cancelMotion(current.id)
+                    self.keyEnds.removeValue(forKey: current.id)?.cancel()
+                    self.gestures[current.id] = nil
+                    self.publishShade(for: current)
+                    continue
+                }
+                if let old = previous[current.id], Self.routeReturned(old, current.display) {
+                    self.cancelMotion(current.id)
+                    self.keyEnds.removeValue(forKey: current.id)?.cancel()
+                    self.gestures[current.id] = nil
+                    // Hotplug rebuilds the hardware route and destroys software
+                    // shade ownership. A cached level is not a restored output.
+                    self.states[index].brightness = nil
+                    self.states[index].lastReadAt = nil
+                    self.states[index].hardwareBrightness = nil
+                    let goal = current.followsAutomatic
+                        ? self.latestAutomaticTarget.map { self.calibratedTarget(at: index, fallback: $0) } ?? old.brightness
+                        : old.brightness
+                    if let goal {
+                        if current.followsAutomatic { self.states[index].mappedTarget = goal }
+                        _ = self.drive(goal, at: index, fade: true)
+                    } else if readHardware {
+                        self.readBrightness(at: index)
+                    }
+                } else if readHardware && current.controlMethod != .softwareDimming,
+                          self.ramps[current.id] == nil && self.gestures[current.id] == nil {
                     self.readBrightness(at: index)
                 }
+            }
+            self.publish()
+        }
+    }
+
+    /// Called only while the menu is visible. A single serialized read per
+    /// settled hardware display, with backoff; never poll software shades.
+    func refreshReadbacksIfDue() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            for i in self.states.indices {
+                let state = self.states[i]
+                guard state.connectionState.isConnected, state.controlMethod == .hardwareDDC,
+                      self.ramps[state.id] == nil, self.gestures[state.id] == nil,
+                      self.readbackWork[state.id] == nil,
+                      self.now >= (self.nextReadback[state.id] ?? -.infinity) else { continue }
+                self.readBrightness(at: i)
             }
             self.publish()
         }
@@ -246,6 +322,9 @@ final class DisplayCoordinator: @unchecked Sendable {
         keyEnds.removeValue(forKey: id)?.cancel()
         guard let g = gestures.removeValue(forKey: id), let i = states.firstIndex(where: { $0.id == id }),
               states[i].connectionState.isConnected else { return }
+        defer {
+            if ramps[id] == nil && states[i].controlMethod == .hardwareDDC { scheduleReadback(id) }
+        }
         guard states[i].followsAutomatic else { states[i].learningNote = "Manual · not learning"; publish(); return }
         guard let x = freshBin, x == g.bin, g.stable else {
             states[i].learningNote = "Not learned: need a stable, fresh Air level"
@@ -303,6 +382,22 @@ final class DisplayCoordinator: @unchecked Sendable {
 
     private func cancelMotion(_ id: String) {
         ticks.removeValue(forKey: id)?.cancel(); ramps[id] = nil
+        readbackWork.removeValue(forKey: id)?.cancel()
+    }
+
+    private func scheduleReadback(_ id: String) {
+        readbackWork.removeValue(forKey: id)?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.readbackWork[id] = nil
+            guard let i = self.states.firstIndex(where: { $0.id == id }),
+                  self.states[i].connectionState.isConnected, self.states[i].controlMethod == .hardwareDDC,
+                  self.ramps[id] == nil, self.gestures[id] == nil else { return }
+            self.readBrightness(at: i)
+            self.publish()
+        }
+        readbackWork[id] = work
+        queue.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
 
     @discardableResult private func drive(_ goal: UInt16, at i: Int, fade: Bool) -> Bool {
@@ -328,7 +423,11 @@ final class DisplayCoordinator: @unchecked Sendable {
                 if hardware { lastHardware[id] = now }
                 publish()
             }
-            if value == ramp.goal { persist(state: states[i]); cancelMotion(id); return }
+            if value == ramp.goal {
+                persist(state: states[i]); cancelMotion(id)
+                if states[i].controlMethod == .hardwareDDC { scheduleReadback(id) }
+                return
+            }
         }
         let delay = remaining > 0 ? remaining : (hardware ? 0.251 : 0.05)
         let work = DispatchWorkItem { [weak self] in self?.step(id) }
@@ -467,7 +566,8 @@ final class DisplayCoordinator: @unchecked Sendable {
             _ = try connection.reconnect(display)
             Thread.sleep(forTimeInterval: 0.25)
             states = enumerateDisplays(preserving: states)
-            guard let currentIndex = states.firstIndex(where: { $0.id == stableID }) else {
+            guard let currentIndex = states.firstIndex(where: { $0.id == stableID }),
+                  states[currentIndex].connectionState.isConnected else {
                 throw DisplayConnectionError.postconditionFailed(
                     "\(display.name) reconnected but was not enumerated."
                 )
@@ -510,10 +610,11 @@ final class DisplayCoordinator: @unchecked Sendable {
                     followsAutomatic: old.followsAutomatic,
                     connectionState: .connected,
                     lastReadAt: old.lastReadAt,
-                    lastError: liveDisplays.count > 1 &&
+                    lastError: Self.routeReturned(old, display) || (liveDisplays.count > 1 &&
                         old.lastError == String(describing: DisplayConnectionError.lastActiveDisplay)
-                        ? nil : old.lastError,
-                    calibration: old.calibration, mappedTarget: old.mappedTarget, learningNote: old.learningNote, extraDim: old.extraDim
+                        ) ? nil : old.lastError,
+                    calibration: old.calibration, mappedTarget: old.mappedTarget, learningNote: old.learningNote, extraDim: old.extraDim,
+                    hardwareBrightness: old.hardwareBrightness, lastCommandAt: old.lastCommandAt
                 )
             }
             return makeInitialState(display: display, connectionState: .connected)
@@ -523,8 +624,7 @@ final class DisplayCoordinator: @unchecked Sendable {
         for display in connection.disconnectedDisplays() where !liveIDs.contains(display.id) {
             offlineByID[display.id] = display
         }
-        for state in oldStates
-            where !state.connectionState.isConnected && !liveIDs.contains(state.id)
+        for state in oldStates where !liveIDs.contains(state.id)
         {
             offlineByID[state.id] = state.display
         }
@@ -541,7 +641,8 @@ final class DisplayCoordinator: @unchecked Sendable {
                         connectionState: .disconnected,
                         lastReadAt: old.lastReadAt,
                         lastError: old.lastError,
-                        calibration: old.calibration, mappedTarget: old.mappedTarget, learningNote: old.learningNote, extraDim: old.extraDim
+                        calibration: old.calibration, mappedTarget: old.mappedTarget, learningNote: old.learningNote, extraDim: old.extraDim,
+                        hardwareBrightness: old.hardwareBrightness, lastCommandAt: old.lastCommandAt
                     )
                 )
             } else {
@@ -562,6 +663,11 @@ final class DisplayCoordinator: @unchecked Sendable {
                 right.display.name
             ) == .orderedAscending
         }
+    }
+
+    private static func routeReturned(_ old: ManagedDisplayState, _ display: ExternalDisplay) -> Bool {
+        !old.connectionState.isConnected || old.display.displayID != display.displayID ||
+            old.display.ioLocation != display.ioLocation
     }
 
     private func makeInitialState(
@@ -623,6 +729,7 @@ final class DisplayCoordinator: @unchecked Sendable {
                 hardwareWrites += 1
                 states[index].brightness = boundedTarget
                 states[index].brightnessOrigin = .lastSet
+                states[index].lastCommandAt = Date()
                 states[index].controlMethod = .hardwareDDC
                 states[index].lastError = nil
                 if save { persist(state: states[index]) }
@@ -648,19 +755,26 @@ final class DisplayCoordinator: @unchecked Sendable {
         guard states.indices.contains(index),
               states[index].connectionState.isConnected
         else { return }
+        let id = states[index].id
+        hardwareReadAttempts += 1
         do {
             let reading = try hardware.readBrightness(of: states[index].display)
             states[index].brightness = reading.percentage
             states[index].brightnessOrigin = .liveHardware
             states[index].controlMethod = .hardwareDDC
             states[index].lastReadAt = Date()
+            states[index].hardwareBrightness = reading.percentage
+            nextReadback[id] = now + 5
             states[index].lastError = nil
             persist(state: states[index])
         } catch {
+            nextReadback[id] = now + 30
             if states[index].brightness == nil {
                 states[index].brightnessOrigin = .unavailable
             } else if states[index].controlMethod == .softwareDimming {
                 states[index].brightnessOrigin = .liveSoftware
+            } else if states[index].hardwareBrightness != nil && states[index].brightnessOrigin == .liveHardware {
+                states[index].brightnessOrigin = .staleHardware
             } else {
                 states[index].brightnessOrigin = .lastSet
             }

@@ -11,6 +11,7 @@ import BrightnessHardware
         let ledger: DisplayRecoveryLedger
         let isAvailable = true
         private var detached = Set<String>()
+        private var brightness: UInt16 = 68
         func isOnline(_ display: ExternalDisplay) -> Bool { !detached.contains(display.id) }
         func disconnectedDisplays() -> [ExternalDisplay] { panels.filter { detached.contains($0.id) } }
         func disconnect(_ display: ExternalDisplay) throws {
@@ -28,12 +29,18 @@ import BrightnessHardware
             Array(["LU28R55", "Beyond TV"].prefix(count)).enumerated().map { index, name in
                 ExternalDisplay(id: "test-desk-\(index)", displayID: UInt32(51000+index), name: name,
                     vendorID: index == 0 ? 0x4c2d : 0x6318, productID: UInt32(index+1),
-                    serialNumber: 0, edidUUID: "", ioLocation: "", isMain: index == 0, supportsStandby: false, deskShape: index == 0 ? .portraitMonitor : .television,
+                    serialNumber: 0, edidUUID: "", ioLocation: index == 0 ? "fixture-displayport" : "fixture-tv", isMain: index == 0, supportsStandby: false, deskShape: index == 0 ? .portraitMonitor : .television,
                     desktopWidth:index == 0 ? 1692:1920,desktopHeight:index == 0 ? 3008:1080,desktopX:index == 0 ? 0:-1920)
             }
         }
-        func set(percentage: UInt16, on display: ExternalDisplay) throws { if display.shape == .television { throw CLIError.invalidValue("Software-only fixture") } }
-        func readBrightness(of display: ExternalDisplay) throws -> DDCValue { throw CLIError.invalidValue("fixture") }
+        func set(percentage: UInt16, on display: ExternalDisplay) throws {
+            if display.shape == .television { throw CLIError.invalidValue("Software-only fixture") }
+            brightness = percentage
+        }
+        func readBrightness(of display: ExternalDisplay) throws -> DDCValue {
+            guard display.shape != .television else { throw CLIError.invalidValue("Software-only fixture") }
+            return DDCValue(current: brightness, maximum: 100)
+        }
     }
 
     private final class CloseHandler: NSObject, NSWindowDelegate {
@@ -70,6 +77,16 @@ import BrightnessHardware
         let server = try RelayHTTPServer(port: 0, authenticator: .init(token: Data(repeating: 4, count: 32)),
             displayCoordinator: coordinator, curve: .init(), loopbackOnly: true)
         let model = BrightnessMenuModel(server: server,fixture:true,shortcutDefaults:prefs)
+        let picker=BringHerePanel(model:BringHereModel(port:PickerFixture()))
+        model.openWindowPicker={picker.open(destination:51000)}
+        defer {picker.stop()}
+        if args.values.contains("--tv-remapped") || args.values.contains("--tv-mapping") || args.values.contains("--tv-pairing") || args.values.contains("--tv-recovery") {
+            model.tv.loadFixtureMapping(PairedTV(service:"Fixture TCL",display:"test-desk-1",pin:Data(),
+                ps5:"fixture/.Input/HW2",mini:"fixture/.Input/HW1",ps5HDMI:2,miniHDMI:1,
+                hdmiInputs:["1":"fixture/.Input/HW1","2":"fixture/.Input/HW2","3":"fixture/.Input/HW3"]))
+        }
+        if args.values.contains("--tv-pairing") { model.tv.pairingFixture() }
+        if args.values.contains("--tv-recovery") { model.tv.recoveryFixture() }
         model.shortcuts.suggestions()
         model.actionsOpen = args.values.contains("--shortcuts")
         model.windows.loadFixture(onTV:args.values.contains("--on-tv"))
@@ -83,8 +100,22 @@ import BrightnessHardware
         model.updateDisplays(states)
         if args.values.contains("--details"), let id = states.first?.id { model.toggleDetails(id) }
         if args.values.contains("--tools") { model.toolsOpen = true }
-        let size = CGSize(width: DeskLayout.width, height: DeskLayout.height(for: nil))
-        let host = NSHostingView(rootView: BrightnessPopoverView(model: model)
+        if args.values.contains("--source-error") { _ = model.samsungSources.configure(.hdmi1, name: "Fixture", code: 300) }
+        let size = CGSize(width: DeskLayout.width, height: args.values.contains("--small") ? 320 : DeskLayout.height(for: nil))
+        let view: AnyView
+        if args.values.contains("--tv-mapping") || args.values.contains("--tv-pairing") || args.values.contains("--tv-recovery") {
+            view = AnyView(ScrollView {
+                TVStrip(remote:model.tv,shortcuts:model.shortcuts,display:"test-desk-1",
+                    previewMapping:args.values.contains("--tv-mapping"),previewPairing:args.values.contains("--tv-pairing") || args.values.contains("--tv-recovery"))
+            }.background(DeckPaint.forest))
+        } else if args.values.contains("--source-setup") {
+            view = AnyView(ScrollView {
+                SamsungSourceControls(sources: model.samsungSources, shortcuts: model.shortcuts, now: Date(), initialTestPort: .hdmi1)
+                    .padding(16)
+            }.foregroundStyle(DeckPaint.ink).tint(DeckPaint.accent).background(DeckPaint.ground))
+        } else { view = AnyView(BrightnessPopoverView(model: model, height: size.height)) }
+        let host = NSHostingView(rootView: view
+            .buttonStyle(.borderless)
             .environment(\.controlActiveState, .key)
             .frame(width: size.width, height: size.height))
         let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: interactive ? [.titled, .closable] : .borderless, backing: .buffered, defer: false)

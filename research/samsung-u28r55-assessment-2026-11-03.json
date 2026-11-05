@@ -1,0 +1,82 @@
+{
+  "assessedOn": "2026-11-03",
+  "scope": "Read-only hardware/control investigation; no production app or installed settings changed in this investigation",
+  "device": {
+    "reportedModel": "LU28R55",
+    "family": "Samsung UR55 / U28R550",
+    "exactRegionalSuffix": "Not established from EDID; verify rear label before firmware work",
+    "vendorHex": "4C2D",
+    "productHex": "1016",
+    "transport": {"upstream": "DP", "downstream": "DP"},
+    "nativePanelPixels": [3840, 2160],
+    "rotationDegrees": 270,
+    "logicalDesktopPoints": [1440, 2560],
+    "refreshHz": 60,
+    "directServiceEDID": {"bytes": 256, "checksumValid": true, "matchesTargetVendorModelAndSerial": true},
+    "documentedInputs": {"DisplayPort": {"count": 1, "version": "1.2"}, "HDMI": {"count": 2, "version": "2.0"}},
+    "documentedOtherFeatures": ["PIP", "PBP", "headphone output"],
+    "documentedAbsentFeatures": ["USB hub downstream ports", "USB-C", "speakers", "wireless display"]
+  },
+  "validatedHardwareReads": [
+    {"vcp": "10", "meaning": "brightness", "current": 52, "maximum": 100},
+    {"vcp": "12", "meaning": "contrast", "current": 88, "maximum": 100},
+    {"vcp": "60", "meaning": "input source", "current": 15, "interpretation": "DisplayPort", "reportedMaximum": 3},
+    {"vcp": "D6", "meaning": "power mode", "current": 1, "interpretation": "on", "reportedMaximum": 4},
+    {"vcp": "DF", "meaning": "MCCS version", "currentHex": "0201", "interpretation": "2.1"},
+    {"vcp": "62", "meaning": "audio output volume", "current": 100, "maximum": 100, "qualification": "Readable; no audio routing or audible output tested"},
+    {"vcp": "14", "meaning": "colour preset", "current": 4, "reportedMaximum": 11, "qualification": "Read only; physical menu label not verified"},
+    {"vcp": "16", "meaning": "red gain", "current": 70, "maximum": 100},
+    {"vcp": "18", "meaning": "green gain", "current": 70, "maximum": 100},
+    {"vcp": "1A", "meaning": "blue gain", "current": 70, "maximum": 100},
+    {"vcp": "C9", "meaning": "DDC firmware level", "currentHex": "0220", "qualification": "Not mapped to a Samsung downloadable firmware version"}
+  ],
+  "productionReadBug": {
+    "appBuild": 15,
+    "appSamsungBrightness": {"value": 100, "kind": "lastSet"},
+    "actualHardwareBrightness": 52,
+    "getVCPRequest": "82 01 10",
+    "productionChecksumSeed": "6E",
+    "productionRequestChecksum": "FD",
+    "workingChecksumSeed": "6E XOR 51 = 3F",
+    "workingRequestChecksum": "AC",
+    "oldReply": "6E80BE repeated (DDC null reply)",
+    "validBrightnessReply": "6E880200100000640034F4",
+    "workingReadSubaddressesObserved": ["00", "51"],
+    "interpretation": "Checksum omission is confirmed. Subaddress 00 follows MonitorControl's API usage; this unit also answered at 51 with the correct checksum, so 51 alone is not the proven root cause.",
+    "productionFixInstalled": false,
+    "caution": "Read replies can intermittently be null even with correct formatting; use bounded retries, checksum/opcode validation, serialization and stale-age labels"
+  },
+  "capabilities": {
+    "complete": true,
+    "reportedModelToken": "FALCON",
+    "raw": "(prot(monitor)type(lcd)model(FALCON)cmds(01 02 03 07 0C 4E F3 E3)vcp(02 04 05 08 0B 0C 10 12 14(01 04 05 06 07 08 0A 0B) 16 18 1A 6C 6E 70 AC AE B6 C0 C6 C8 C9 CA CC(00 02 03 04 05 08 09 0A 0D) D6(01 04) DC(00 01 02 03 04) DF 60(01 03) 62 8D FF)mswhql(1)mccs_ver(2.0)asset_eep(32)mpu_ver(01))",
+    "cautions": [
+      "Advertises source values 01 and 03, but the actual current DisplayPort value is 0F; do not generate source buttons from this list alone",
+      "Capabilities says MCCS 2.0 while the DF reply says 2.1",
+      "FALCON is a generic capability token, not proof this is the iFFALCON TV; direct service EDID was independently verified as Samsung",
+      "A prior U28R55 Monitorian issue reports the same FALCON token and intermittent DDC responses"
+    ]
+  },
+  "potentialFeatures": [
+    {"feature": "Actual brightness and input readback", "state": "Hardware reads verified; production checksum repair needed"},
+    {"feature": "DP / HDMI 1 / HDMI 2 source controls", "state": "DP current value verified. HDMI write values and return from inactive DP not physically qualified"},
+    {"feature": "Contrast and monitor RGB/preset controls", "state": "Reads verified; no writes qualified. Avoid stacking hardware RGB adjustment on existing software white balance without baseline handling"},
+    {"feature": "Separate hardware standby", "state": "Power status readable; off/wake round trip not tested. Must remain distinct from logical disconnect"},
+    {"feature": "PIP/PBP", "state": "Documented hardware feature; software command not established. Requires multiple real video sources and portrait-layout qualification"},
+    {"feature": "Keyboard/mouse KVM switching", "state": "Not provided by the monitor's HDMI inputs; no USB hub. Separate software or USB switching would be required"}
+  ],
+  "openSource": [
+    {"name": "m1ddc", "url": "https://github.com/waydabber/m1ddc", "localPath": "research/repos/m1ddc", "revision": "7339ceebb03f691b1eaeb8471dca301d215d19c8", "license": "MIT", "finding": "GET request checksum includes the input/source address; matches the working Samsung query"},
+    {"name": "MonitorControl", "url": "https://github.com/MonitorControl/MonitorControl", "localRevision": "7cfe64500d19cbbcbf82121a91c826f658a403bd", "license": "MIT", "finding": "Apple Silicon routing/read-subaddress and bounded retries reference; its examined GET checksum branch omits the source byte and is not sufficient for this Samsung"},
+    {"name": "Monitorian issue 304", "url": "https://github.com/emoacht/Monitorian/issues/304", "finding": "Exact-family FALCON capabilities and intermittent control/read evidence"},
+    {"name": "ddcutil", "url": "https://www.ddcutil.com/vcpinfo_output/", "finding": "VCP semantics and capability interpretation reference, not a macOS runtime dependency"}
+  ],
+  "officialSources": [
+    "https://www.samsung.com/sec/support/model/LU28R550UQKXKR/",
+    "https://www.samsung.com/uk/support/model/LU28R550UQRXXU/",
+    "https://image-us.samsung.com/SamsungUS/samsungbusiness/pdfs/datasheet/MON-UR550SERIESDSHT-FEB20T.pdf"
+  ],
+  "notPerformed": ["input switching", "power off/wake", "logical disconnect/reconnect", "PIP/PBP changes", "brightness/contrast/colour changes", "firmware update", "app installation or restart", "network pairing"],
+  "afterProbe": {"SamsungConnected": true, "TCLConnected": true, "liveAirUpdates": true},
+  "recommendedOrder": ["Repair and test DDC readback", "Expose verified actual hardware status", "Attach a real HDMI source and qualify source switching plus return to DP with user approval", "Only then expose supported source shortcuts; separately qualify standby and optional PIP/PBP"]
+}
