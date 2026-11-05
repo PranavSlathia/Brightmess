@@ -11,6 +11,9 @@ final class ArrangeWindows:NSObject,NSApplicationDelegate,NSWindowDelegate {
         for index in 0..<3 {
             let window=NSWindow(contentRect:NSRect(x:0,y:0,width:500,height:340),styleMask:[.titled,.closable,.resizable,.miniaturizable],backing:.buffered,defer:false)
             window.title="Arrange test \(index+1)";window.isReleasedWhenClosed=false;window.delegate=self
+            // Fixture-only: remain visible on the destination's active Space
+            // when the test buttons move them between physical displays.
+            window.collectionBehavior=[.canJoinAllSpaces]
             window.contentMinSize=NSSize(width:320,height:200)
             let stack=NSStackView();stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=14
             stack.edgeInsets=NSEdgeInsets(top:20,left:20,bottom:20,right:20)

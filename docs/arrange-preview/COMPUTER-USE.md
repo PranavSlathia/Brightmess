@@ -1,5 +1,25 @@
 # Interactive computer-use evidence — 2026-11-06
 
+## Final installed follow-up
+
+The initial record below describes the simulated fixture. Later, the integrated
+0.13.0 build 29 was installed with stable signing and tested on three owned native
+AppKit windows. Computer use verified the real Source Deck action, All/None
+selection, three-window Apply, actual window-frame change and Undo restoring the
+original frame. Personal windows were explicitly deselected; all test windows
+were closed at the end. Native production-adapter checks passed on Samsung and TV.
+See [release verification and rollback](../ARRANGE-HERE.md#integrated-release-verification).
+
+The build-28 trial had exposed an AppKit enhanced-UI animation failure. That trial
+stopped after one partial change and Undo restored it. The regression was fixed
+and the installed success above belongs to build 29, not to that failed attempt.
+
+The real global shortcut is registered as Control-Option-Return. Automation's
+app-local key delivery did not trigger the global Carbon handler, so physical
+keyboard dispatch remains a distinct user check, not an inferred GUI pass.
+
+## Initial simulated fixture
+
 Scope: production Arrange panel, action row and shortcut editor, hosted in a
 separate DEBUG fixture app. Window read/write and shortcut registration adapters
 are simulated. This is actual GUI interaction evidence, not real app-window

@@ -160,6 +160,7 @@ struct RelayClient {
 
 enum RelayControlAction: String, Sendable {
     case showMenu = "show-menu"
+    case arrangeHere = "arrange-here"
     case wakeAll = "wake-all"
     case syncNow = "sync-now"
     case setColor = "set-color"
@@ -391,6 +392,7 @@ final class RelayHTTPServer {
                   "/v1/ambient",
                   "/v1/pull/await",
                   "/v1/control/show-menu",
+                  "/v1/control/arrange-here",
                   "/v1/control/wake-all",
                   "/v1/control/sync-now",
                   "/v1/control/status",
@@ -467,6 +469,8 @@ final class RelayHTTPServer {
             handlePullWait(request, on: connection)
         case "/v1/control/show-menu":
             handleControl(.showMenu, request: request, on: connection)
+        case "/v1/control/arrange-here":
+            handleControl(.arrangeHere, request: request, on: connection)
         case "/v1/control/wake-all":
             handleControl(.wakeAll, request: request, on: connection)
         case "/v1/control/sync-now":

@@ -1,4 +1,4 @@
-# Arrange here — BRIGHTMESS 0.13.0 / build 28
+# Arrange here — BRIGHTMESS 0.13.0 / build 29
 
 This feature began in an isolated lane and is now integrated with committed
 window, TV, display-recovery and signing fixes through `7e67dd0`. The installed
@@ -7,7 +7,7 @@ redesign is not included. No Air update or TV source change is required.
 
 ## Integrated release verification
 
-- 58 Swift Testing cases pass, including the 13 arrangement regressions.
+- 60 Swift Testing cases pass, including the 15 arrangement regressions.
 - Expanded executable simulation passes for arrangement, picker, geometry,
   TV identity/recovery/mapping, hardware readback, display recovery and live sync.
 - Release build and 27 core executable checks pass. Native light/dark previews
@@ -15,10 +15,49 @@ redesign is not included. No Air update or TV source change is required.
 - Arrangement shares `WindowServerGeometry.id` and the verified
   `WindowGeometry.resolve` size-agreement guard. It never reads a transitional
   frame between resize and move in its single native write sequence.
+- Native testing caught AppKit enhanced-UI animation accepting a resize but
+  losing the following position update. The owned fixture reproduced the exact
+  failure; a focused regression went red before the guard was implemented.
+  Two new tests now cover the successful batch, restoration and assistive tools.
+  The frame batch now temporarily suppresses this per-app animation, restores
+  its original state even on error, and does not suppress VoiceOver/Switch Control.
+- Three actual owned AppKit windows passed exact/tolerant frame readback and Undo
+  on Samsung and TV. The TV fixture first needed raising onto its active Space;
+  the unavailable attempts sent no writes. No personal app window was selected.
 - The user requested activation of Control-Option-Return on this Mini only.
   New installs still leave the action unassigned until selected.
-- Installation, rollback path and actual-window acceptance are recorded below
-  after the signed update is verified.
+- Final **0.13.0 / build 29** is installed at `~/Applications/BRIGHTMESS.app`
+  with the existing verified Apple Development identity. Strict signature checks,
+  Accessibility, Magic Keyboard access, authenticated TV session and live Air
+  status remain healthy; no new permission approval was requested.
+- Control-Option-Return is saved and successfully registered on this Mini. Other
+  shortcut settings match the pre-install snapshot. The computer-use tool's
+  app-targeted key injection did not exercise Carbon's global hotkey delivery;
+  physical key activation is not claimed as a completed test.
+- Final installed computer use opened the real panel, deselected all personal
+  windows, selected exactly three disposable windows, applied the Samsung layout,
+  observed `Arranged 3 windows`, and verified the test app's actual frame changed
+  from `(100,2080,500,340)` to `(12,12,1416,840)` in AppKit coordinates. Undo
+  reported `Restored 3 windows` and the original frame returned. All test windows
+  and the panel were closed afterward.
+- Eight persisted calibration/Follow values, semantic TV pairing/input settings
+  and all existing shortcut settings were compared with the pre-install snapshot
+  and preserved. TV JSON byte ordering changed, but no decoded field did.
+
+### Rollback
+
+The backup of the known-good build 27, including the original launch configuration,
+CLI and a private preference snapshot before enabling the new key, is:
+
+`~/Library/Application Support/Brightness Relay/Backups/20261106-022400.6XJTIR`
+
+Its app signature verifies and receiver plist matches the retained launch settings.
+Run its `Rollback Mini.command` to restore build 27. Rollback retains current
+preferences; the older app ignores the additional Arrange binding. The later
+`20261106-024756.w6ytd8` backup holds the intermediate build-28 trial, not the
+recommended recovery version. No destructive rollback rehearsal was run on the
+live desk. Source is on `codex/arrange-here-v1`; the parent checkout's unfinished
+redesign was not overwritten, and nothing was pushed remotely.
 
 ## Direction contract
 
@@ -122,6 +161,12 @@ adapter uses a guarded private window-ID fallback already familiar to this
 codebase; do not infer Mac App Store eligibility. The later distribution lane
 still needs stable signing and notarization.
 
+The per-app enhanced-UI animation guard also follows the design demonstrated by
+Rectangle's `AccessibilityElement.performFrameAdjustment`; BRIGHTMESS's small
+guard and restoration tests are implemented locally. No assistive-technology
+system VoiceOver/Switch Control settings, Keychain ACL or system permissions are
+changed by this guard.
+
 ## Architecture and integration
 
 - `ArrangementGrid`: small, pinned MIT allocation adaptation; no native calls.
@@ -198,5 +243,5 @@ Integration checklist:
    disconnect/cancel during application; Undo after a manual change.
 4. Verify pointer-based destination and keyboard operation with the signed app,
    then regress TV input shortcuts, window picker and Air brightness sync.
-5. Only then use the main lane's approved signed installer with rollback. This
-   branch's pre-stable-signing installer is not the release path.
+5. Use the integrated stable-signed installer with rollback; never the original
+   branch's pre-integration ad-hoc installer. Final installation is recorded above.

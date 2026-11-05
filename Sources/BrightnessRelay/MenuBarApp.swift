@@ -119,6 +119,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
                 switch action {
                 case .showMenu:
                     self.openPopover()
+                case .arrangeHere:
+                    self.openArrangement()
                 case .wakeAll:
                     self.model.wakeAll()
                 case .syncNow:

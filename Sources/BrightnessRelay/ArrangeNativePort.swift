@@ -63,8 +63,15 @@ import Darwin
     }
     func write(_ id:String,frame:CGRect) async throws {
         guard trusted,let element=elements[id],ArrangementPlanner.valid(frame) else{throw TVError("Window unavailable or invalid target.")}
+        let assistiveTechnologyActive=NSWorkspace.shared.isVoiceOverEnabled || NSWorkspace.shared.isSwitchControlEnabled
         let job=Task.detached(priority:.userInitiated) {
             try Task.checkCancellation();try ArrangeAX.checkedIdentity(element,id:id)
+            var pid:pid_t=0
+            guard AXUIElementGetPid(element,&pid) == .success else{throw TVError("Window owner unavailable")}
+            let app=AXUIElementCreateApplication(pid);AXUIElementSetMessagingTimeout(app,0.25)
+            try ArrangementAdjustment.perform(assistiveTechnologyActive:assistiveTechnologyActive,
+                readEnabled:{ArrangeAX.value(app,"AXEnhancedUserInterface") as? Bool},
+                setEnabled:{AXUIElementSetAttributeValue(app,"AXEnhancedUserInterface" as CFString,$0 ? kCFBooleanTrue:kCFBooleanFalse) == .success}) {
             var size=frame.size,origin=frame.origin
             if ArrangeAX.settable(element,kAXSizeAttribute),let value=AXValueCreate(.cgSize,&size) {
                 _ = AXUIElementSetAttributeValue(element,kAXSizeAttribute as CFString,value)
@@ -79,6 +86,7 @@ import Darwin
             try Task.checkCancellation()
             if ArrangeAX.settable(element,kAXSizeAttribute),let value=AXValueCreate(.cgSize,&size) {
                 _ = AXUIElementSetAttributeValue(element,kAXSizeAttribute as CFString,value)
+            }
             }
         }
         try await withTaskCancellationHandler(operation:{try await job.value},onCancel:{job.cancel()})

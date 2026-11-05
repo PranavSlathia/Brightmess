@@ -1,6 +1,6 @@
 # BRIGHTMESS release history
 
-## 0.13.0 · Arrange here (Mini build 28)
+## 0.13.0 · Arrange here (Mini build 29)
 
 - Add a display-local Arrange action, configurable icon and optional
   Control-Option-Return shortcut. Existing keys and controls remain intact.
@@ -9,6 +9,10 @@
   windows and retains guarded recovery after delayed/refused writes.
 - Restrict arrangement to normal on-screen windows. Share the corrected
   window-ID/geometry checks without replaying writes during native transitions.
+- Fix the build-28 native trial's resize-without-position failure: suppress
+  AppKit enhanced-UI animation only during a frame batch and restore its prior
+  state afterward. Preserve VoiceOver/Switch Control behavior. Native three-window
+  arrangement plus Undo passes on Samsung and TV.
 - Adapt Rectangle's pure MIT grid allocator and include the full notice.
   Amethyst/AeroSpace supplied ideas only; Magnet/Moom are UX references.
 - Preserve stable signing, TV pairing, Air sync, display preferences and the

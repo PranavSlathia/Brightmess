@@ -55,7 +55,7 @@ plutil -insert CFBundlePackageType -string APPL "$INFO"
 plutil -insert CFBundleIconFile -string BRIGHTMESS "$INFO"
 plutil -insert CFBundleIconName -string BRIGHTMESS "$INFO"
 VERSION=0.13.0
-BUILD=28
+BUILD=29
 plutil -insert CFBundleShortVersionString -string "$VERSION" "$INFO"
 plutil -insert CFBundleVersion -string "$BUILD" "$INFO"
 plutil -insert NSLocalNetworkUsageDescription -string "Find your selected Android TV and send input commands on your local network." "$INFO"

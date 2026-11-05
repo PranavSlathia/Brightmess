@@ -140,3 +140,25 @@ private final class ArrangementFake:ArrangementDriver {
     let result=await task.value
     #expect(driver.writes.count==4 && result.remaining.entries.count==2)
 }
+
+@Test func arrangementFrameBatchSuppressesEnhancedUIAndRestoresIt() throws {
+    var enhanced=true,transitions=[Bool](),positionApplied=false
+    try ArrangementAdjustment.perform(assistiveTechnologyActive:false,readEnabled:{enhanced},setEnabled:{enhanced=$0;transitions.append($0);return true}) {
+        // Captured AppKit failure: animated size changes accepted, next position
+        // lost while enhanced UI is active. The entire batch must be immediate.
+        positionApplied = !enhanced
+    }
+    #expect(positionApplied)
+    #expect(enhanced && transitions == [false,true])
+}
+
+@Test func arrangementEnhancedUIRestoresOnFailureAndRespectsAssistiveTools() {
+    var enhanced=true,transitions=[Bool]()
+    #expect(throws:TVError.self) {
+        try ArrangementAdjustment.perform(assistiveTechnologyActive:false,readEnabled:{enhanced},setEnabled:{enhanced=$0;transitions.append($0);return true}) {throw TVError("Fixture refusal")}
+    }
+    #expect(enhanced && transitions == [false,true])
+    transitions=[]
+    try? ArrangementAdjustment.perform(assistiveTechnologyActive:true,readEnabled:{enhanced},setEnabled:{enhanced=$0;transitions.append($0);return true}) {}
+    #expect(enhanced && transitions.isEmpty)
+}

@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import ApplicationServices
 import SwiftUI
 import BrightnessCore
 
@@ -26,6 +27,26 @@ import BrightnessCore
 }
 
 @MainActor enum ArrangeChecks {
+    static func nativeWindows(screenName:String)async throws {
+        let apps=NSWorkspace.shared.runningApplications.filter{$0.bundleIdentifier=="dev.pranav.brightmess.arrange-windows-test" && !$0.isTerminated}
+        guard apps.count==1,let app=apps.first,
+              let screen=NSScreen.screens.first(where:{$0.localizedName==screenName}),
+              let display=ArrangeNativePort.display(for:screen) else{throw TVError("Expected one owned three-window fixture and the named display")}
+        let port=ArrangeNativePort()
+        guard port.trusted else{throw TVError("Native fixture check requires existing Accessibility access")}
+        let windows=try await port.capture(display).filter{$0.id.hasPrefix("\(app.processIdentifier):")}
+        guard windows.count==3,let plan=ArrangementPlanner.plan(windows:windows,display:display,mode:.smart) else{throw TVError("Expected exactly three normal owned fixture windows on this display")}
+        let appAX=AXUIElementCreateApplication(app.processIdentifier)
+        print("Owned fixture enhanced UI: \(String(describing:AXDesk.value(appAX,"AXEnhancedUserInterface")))")
+        let result=await ArrangementTransaction.apply(plan,driver:port)
+        for item in plan.items {
+            print("Fixture \(item.window.id): before=\(item.window.frame), target=\(item.target), observed=\(String(describing:try? await port.read(item.window.id)))")
+        }
+        let recovery=await ArrangementTransaction.undo(result.undo,driver:port)
+        print(recovery.message)
+        guard result.complete,recovery.remaining.entries.isEmpty else{throw TVError("Native arrangement failed: \(result.message)")}
+        print("Native arrangement and Undo passed for three owned windows on \(screenName).")
+    }
     static func run()async throws {
         let d=ArrangementDisplay(id:1,name:"Samsung",usable:CGRect(x:0,y:0,width:1440,height:2560))
         let port=ArrangeFixturePort(screen:d),model=ArrangeModel(port:port)

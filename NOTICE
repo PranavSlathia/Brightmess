@@ -34,6 +34,8 @@ Rectangle (rxhanson/Rectangle, MIT) informed the narrow AX-to-CGWindowID bridge
 and exact-window metadata lookup. BRIGHTMESS's guarded runtime lookup and geometry
 resolver are original implementations; the allocation module adapted above is
 the only Rectangle source bundled.
+Rectangle's frame-adjustment handling also informed the locally implemented,
+reversible enhanced-UI animation guard; built-in assistive tools are preserved.
 https://github.com/rxhanson/Rectangle
 
 The TV remote's Android Remote v2 pairing, messaging and commands adapt the

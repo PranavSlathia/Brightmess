@@ -123,6 +123,7 @@ struct BrightnessRelayCLI {
         switch command {
         #if DEBUG
         case "arrange-check":try await ArrangeChecks.run()
+        case "arrange-native-check":try await ArrangeChecks.nativeWindows(screenName:arguments.option("--screen") ?? "LU28R55")
         #endif
         case "help", "--help", "-h":
             print(help)
@@ -222,6 +223,9 @@ struct BrightnessRelayCLI {
         case "show-menu":
             try await makeClient(arguments).sendControl(.showMenu)
             print("Opened the BRIGHTMESS controller.")
+        case "arrange-here":
+            try await makeClient(arguments).sendControl(.arrangeHere)
+            print("Requested Arrange here preview. Windows change only after Apply.")
         case "token":
             try token(arguments)
         case "send":
@@ -521,6 +525,7 @@ struct BrightnessRelayCLI {
       brightness-relay set-display <number-or-id> <0-100>
       brightness-relay wake-all
       brightness-relay show-menu
+      brightness-relay arrange-here
       brightness-relay token create [--token-file <path>]
       brightness-relay receive [--port 47777] [--min 15] [--max 100] [--gamma 1]
                                [--deadband 2] [--token-file <path>]

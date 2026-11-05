@@ -18,7 +18,7 @@ needed. See the [current mapping record](research/TCL-REMAP-0.11.1.md).
 [TCL setup and field notes](research/LIGHT-DESK-0.9.md#verified-return-to-hdmi-3-over-wi-fi) ·
 [Release history](CHANGELOG.md)
 
-**0.13.0 (Mini build 28):** **Arrange this screen** previews full-screen window
+**0.13.0 (Mini build 29):** **Arrange this screen** previews full-screen window
 zones on the pointer's display, with Smart/Equal layouts, individual selection,
 Apply and guarded Undo. It preserves the build-27 sun mark and the
 [window-transition fixes](research/WINDOW-TRANSITIONS-0.12.3.md).
@@ -27,7 +27,7 @@ See the [feature and verification record](docs/ARRANGE-HERE.md).
 ## Menu-bar controls
 
 Click the colourful sun in the menu bar to open **Source Deck** (Mini 0.13.0,
-build 28). TV sources come first, then windows from your other display, then
+build 29). TV sources come first, then windows from your other display, then
 independent display controls. The small display shapes use macOS desktop
 proportions; they do not claim a panel's physical size or native resolution.
 Click the shape or **Details** for readings and calibration. No Air update is needed.
@@ -369,6 +369,7 @@ brightness-relay probe
 brightness-relay set-display 1 50
 brightness-relay wake-all
 brightness-relay show-menu
+brightness-relay arrange-here
 ```
 
 `displays` shows stable identities and advertised standby support. `probe`
@@ -376,6 +377,8 @@ attempts read-only live DDC reads. `set-display` targets one display; it will
 fail honestly for a monitor that rejects DDC instead of claiming success.
 `wake-all` asks the running app to reconnect known disconnected screens.
 `show-menu` opens the controller without hunting for the status icon.
+`arrange-here` opens/toggles the same display-local preview through the existing
+authenticated control channel. It never applies a layout without confirmation.
 
 ## Development
 
@@ -396,7 +399,7 @@ under Tests/; select a full Xcode toolchain when Command Line Tools lacks Testin
 
 The Mini's bundle version is **0.13.0**, while the compatible receiver API
 still reports **0.8.0**. In `status`, check `controls.uiBuild` for the Mini
-build (`28`), and `sourceMode` for the Air's mode. `controls.arrangeHere`
+build (`29`), and `sourceMode` for the Air's mode. `controls.arrangeHere`
 reports visibility, work state and counts without window titles. Examples:
 
 ```sh
