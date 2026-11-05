@@ -163,8 +163,8 @@ still needs stable signing and notarization.
 
 The per-app enhanced-UI animation guard also follows the design demonstrated by
 Rectangle's `AccessibilityElement.performFrameAdjustment`; BRIGHTMESS's small
-guard and restoration tests are implemented locally. No assistive-technology
-system VoiceOver/Switch Control settings, Keychain ACL or system permissions are
+guard and restoration tests are implemented locally. No system VoiceOver or
+Switch Control settings, Keychain ACL or system permissions are
 changed by this guard.
 
 ## Architecture and integration
