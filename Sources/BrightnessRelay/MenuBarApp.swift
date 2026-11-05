@@ -36,6 +36,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     private var terminationSignal: DispatchSourceSignal?
     private var markMode:DeskMark.Mode = .linked
     private let markCue=DeskMarkCue()
+    private let arrangement=ArrangePanelController()
 
     init(server: RelayHTTPServer) {
         self.server = server
@@ -56,6 +57,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         model.shortcuts.perform = { [weak self] action in
             guard let self else { return }
             if action == .move { self.model.windows.toggle(captured:self.popover.isShown) }
+            else if action == .arrange {self.openArrangement()}
             else { self.model.tv.activate(action); if !self.model.tv.ready { NSSound.beep() } }
         }
         model.shortcuts.tvNeeded = { [weak model] needed in model?.tv.keepForShortcuts(needed) }
@@ -183,7 +185,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         let panelHeight = DeskLayout.height(for: NSScreen.main?.visibleFrame.height)
         popover.contentSize = NSSize(width: DeskLayout.width, height: panelHeight)
         popover.contentViewController = NSHostingController(
-            rootView: BrightnessPopoverView(model: model, height: panelHeight)
+            rootView: BrightnessPopoverView(model: model, height: panelHeight,arrange:{[weak self] in self?.openArrangement()})
         )
         RelayLog.write("Menu bar status item installed")
     }
@@ -266,7 +268,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         let height=DeskLayout.height(for:destination?.visibleFrame.height)
         if popover.contentSize.height != height {
             popover.contentSize=NSSize(width:DeskLayout.width,height:height)
-            popover.contentViewController=NSHostingController(rootView:BrightnessPopoverView(model:model,height:height))
+            popover.contentViewController=NSHostingController(rootView:BrightnessPopoverView(model:model,height:height,arrange:{[weak self] in self?.openArrangement()}))
         }
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         model.tv.open()
@@ -280,6 +282,11 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         }
         NSApp.activate(ignoringOtherApps: true)
         RelayLog.write("Brightness controller popover opened")
+    }
+
+    private func openArrangement() {
+        popover.performClose(nil)
+        arrangement.toggle()
     }
 
     private func show(_ status: AppliedBrightnessStatus) {
@@ -299,6 +306,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        arrangement.stop()
         markCue.reset()
         model.shortcuts.stop(); model.windows.stop(); model.tv.shutdown()
         model.restoreColors()

@@ -1,6 +1,7 @@
 import BrightnessCore
 import BrightnessHardware
 import Foundation
+import AppKit
 
 enum CLIError: Error, CustomStringConvertible {
     case missingCommand
@@ -62,6 +63,20 @@ struct BrightnessRelayCLI {
     static func main() {
         let arguments = CLIArguments(values: CommandLine.arguments)
         #if DEBUG
+        if Bundle.main.bundleIdentifier == "dev.pranav.brightmess.arrange-fixture" {
+            ArrangeInteractiveFixture.run();return
+        }
+        if arguments.command == "arrange-preview" {
+            _ = NSApplication.shared
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            Task {
+                do {
+                    guard let path=arguments.positional(at:0) else{throw CLIError.missingValue("output folder")}
+                    try await ArrangeChecks.render(folder:URL(fileURLWithPath:path));Foundation.exit(0)
+                } catch {fail(error)}
+            }
+            NSApplication.shared.run();return
+        }
         if arguments.command == "panel-preview" {
             do { try DeskPreview.render(arguments) } catch { fail(error) }
             return
@@ -101,6 +116,9 @@ struct BrightnessRelayCLI {
             throw CLIError.missingCommand
         }
         switch command {
+        #if DEBUG
+        case "arrange-check":try await ArrangeChecks.run()
+        #endif
         case "help", "--help", "-h":
             print(help)
         #if DEBUG

@@ -13,6 +13,7 @@ enum DeskLayout {
 struct BrightnessPopoverView: View {
     @ObservedObject var model: BrightnessMenuModel
     var height: CGFloat = DeskLayout.height(for: nil)
+    var arrange:(()->Void)? = nil
 
     private var displays:[ManagedDisplayState] {
         model.displays.sorted {
@@ -28,6 +29,9 @@ struct BrightnessPopoverView: View {
                     VStack(alignment:.leading,spacing:0) {
                         SourceDeckTV(remote:model.tv,shortcuts:model.shortcuts,displays:displays)
                         DeskWindowsView(windows:model.windows,shortcuts:model.shortcuts,requestAccess:model.requestKeyboardAccess)
+                        if let arrange {
+                            ArrangeDeskAction(shortcuts:model.shortcuts,perform:arrange)
+                        }
                         levels
                         if let id=model.detailedDisplay,let state=displays.first(where:{$0.id==id}){
                             DeskScreenStrip(model:model,state:state,detailsOnly:true).id("detail-"+id)

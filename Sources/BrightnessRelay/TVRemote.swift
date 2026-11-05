@@ -9,7 +9,7 @@ struct PairedTV: Codable {
     var ps5Picker = false, miniPicker = false
     func route(_ a: DeskAction) -> (code: Int, link: String?, label: String)? {
         switch a {
-        case .move: return nil
+        case .move,.arrange: return nil
         case .home: return (3,nil,"Smart TV")
         case .ps5 where ps5Picker, .mac where miniPicker: return (178,nil,"Open TV inputs")
         case .ps5: return (243,ps5.isEmpty ? nil : ps5,"PS5")

@@ -85,7 +85,7 @@ struct DeskShortcutEditor: View {
             HStack {
                 Text("Shortcuts & icons").font(.headline); Spacer()
                 Button("Use suggested keys") { shortcuts.suggestions() }
-                    .help("Fill only unassigned actions: ⌃⌥⌘M, ⌃⌥⌘1, ⌃⌥⌘2. Smart TV stays click-only.")
+                    .help("Fill only unassigned actions: ⌃⌥⌘M, ⌃⌥⌘1, ⌃⌥⌘2 and ⌃⌥Return for Arrange here. Smart TV stays click-only.")
             }
             Text("Choose an icon or record a global shortcut. Esc cancels recording.").font(.caption).foregroundStyle(.secondary)
             ForEach(DeskAction.allCases) { action in
