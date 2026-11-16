@@ -72,6 +72,12 @@ public struct SourcePresence: Sendable {
 }
 
 /// Single-slot, monotonic-time send scheduler. One in flight, latest pending wins.
+public enum LivePublicationPolicy {
+    public static func shouldPublish(force:Bool,changed:Bool,last:Double?,now:Double)->Bool {
+        force || changed || last == nil || now-(last ?? now)>=60
+    }
+}
+
 public struct LatestPublisher<Value: Sendable>: Sendable {
     private var pending: Value?
     private var inFlight = false

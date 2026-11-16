@@ -54,8 +54,8 @@ plutil -insert CFBundleDisplayName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
 plutil -insert CFBundleIconFile -string BRIGHTMESS "$INFO"
 plutil -insert CFBundleIconName -string BRIGHTMESS "$INFO"
-VERSION=0.13.0
-BUILD=29
+VERSION=0.14.1
+BUILD=33
 plutil -insert CFBundleShortVersionString -string "$VERSION" "$INFO"
 plutil -insert CFBundleVersion -string "$BUILD" "$INFO"
 plutil -insert NSLocalNetworkUsageDescription -string "Find your selected Android TV and send input commands on your local network." "$INFO"
@@ -63,6 +63,7 @@ plutil -insert NSBonjourServices -json '["_androidtvremote2._tcp"]' "$INFO"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$INFO"
 plutil -insert LSUIElement -bool true "$INFO"
 plutil -insert NSHighResolutionCapable -bool true "$INFO"
+"/usr/bin/swift" "$ROOT/scripts/package-app-intents.swift" "$BUILD_ROOT" "$STAGED_APP"
 # Keep a stable identity across updates. Never auto-pick from find-identity:
 # its list can include a revoked certificate. Never silently fall back to ad hoc.
 SIGNING_IDENTITY="${BR_SIGNING_IDENTITY:-}"

@@ -54,12 +54,13 @@ commercial packaging, or TV-side installers are part of the shortcuts release.
 
 Source Deck puts the paired TV's three source actions first, the shelf of
 other-screen windows second, and independent display controls third. Use the
-green Desk Plan palette in both appearances. Represent displays using their
+sun-coloured translucent glass across the entire panel, mixing gold, orange
+and coral rather than neutral glass with small accents. Dark mode uses a deeper
+sunset palette. Represent displays using their
 oriented macOS desktop bounds, not a stock TV/portrait illustration. The
-menu-bar mark must remain legible at 23 × 17 points. Use the original-colour
-Brightest Mess sun mark there: a winking face and one amber ray out of place.
-Retain the installed green Source Deck treatment for this arrangement release;
-the separate in-progress colour/layout redesign is not part of it.
+menu-bar mark must remain legible at 23 × 17 points. Give the original-colour
+sun its crooked grin and one runaway ray: BRIGHTMESS is “the brightest mess.”
+Keep the joke in the mark and keep the controls literal.
 
 ## Principles
 

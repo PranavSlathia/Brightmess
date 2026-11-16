@@ -6,15 +6,29 @@ enum DeckPaint {
     private static func rgb(_ hex:Int)->NSColor {
         NSColor(srgbRed:CGFloat((hex>>16)&255)/255,green:CGFloat((hex>>8)&255)/255,blue:CGFloat(hex&255)/255,alpha:1)
     }
-    private static func adaptive(_ light:Int,_ dark:Int)->Color {
+    static func adaptive(_ light:Int,_ dark:Int)->Color {
         Color(nsColor:NSColor(name:nil){$0.bestMatch(from:[.aqua,.darkAqua]) == .darkAqua ? rgb(dark):rgb(light)})
     }
-    static let ground=adaptive(0xf0f3e8,0x192c24),ink=adaptive(0x153d2e,0xf0f4df)
-    static let muted=adaptive(0x3d574a,0xc0cebb),rule=adaptive(0xa0b09a,0x576e60)
-    static let shelf=adaptive(0xe4edcf,0x243d30),button=adaptive(0xf6f8ed,0x2c4436)
-    static let accent=adaptive(0x204834,0xd4e6b5),onAccent=adaptive(0xfffcf2,0x14261d)
-    static let forest=Color(nsColor:rgb(0x153d2f)),cream=Color(nsColor:rgb(0xf4f9e9))
-    static let pear=Color(nsColor:rgb(0xddebba)),leaf=Color(nsColor:rgb(0xc5ed70))
+    static func fixed(_ hex: Int) -> Color { Color(nsColor: rgb(hex)) }
+
+    static let ground = adaptive(0xffe0a3, 0x923912)
+    static let ink = adaptive(0x2b160a, 0xfff3d9)
+    static let keyLabel = adaptive(0x2b160a, 0xffffff)
+    static let muted = adaptive(0x4e2817, 0xffebd2)
+    static let rule = adaptive(0x783110, 0xffe4b9).opacity(0.32)
+    static let shelf = fixed(0xffb43e).opacity(0.08)
+    static let button = adaptive(0xffe3a8, 0xd48e4a).opacity(0.13)
+    static let accent = adaptive(0x7c280b, 0xffe1a8)
+    static let amber = fixed(0xffb65c)
+    static let glassTint = adaptive(0xffb634, 0xa1430b)
+    static let dawn = adaptive(0xffde66, 0x8a3304)
+    static let noon = adaptive(0xffac57, 0x86260f)
+    static let dusk = adaptive(0xff7e84, 0x74152f)
+    static var solarGradient: LinearGradient {
+        LinearGradient(colors:[dawn,noon,dusk], startPoint:.topLeading, endPoint:.bottomTrailing)
+    }
+
+    static func title(_ size: CGFloat) -> Font { .system(size:size, weight:.semibold, design:.rounded) }
 }
 
 struct DeckDisplayGlyph: View {

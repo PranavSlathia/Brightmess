@@ -46,6 +46,7 @@ enum RuntimeChecks {
         try DisplayRecoveryChecks.run()
         try await DeskShelfChecks.run()
         try await BringHereChecks.run()
+        try await WorkflowChecks.run()
         func expect(_ test: @autoclosure () -> Bool, _ message: String) throws {
             if !test() { throw Failed.check(message) }
         }

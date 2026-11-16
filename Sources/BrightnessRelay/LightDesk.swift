@@ -14,6 +14,7 @@ struct BrightnessPopoverView: View {
     @ObservedObject var model: BrightnessMenuModel
     var height: CGFloat = DeskLayout.height(for: nil)
     var arrange:(()->Void)? = nil
+    var materialWithinWindow = false
 
     private var displays:[ManagedDisplayState] {
         model.displays.sorted {
@@ -55,40 +56,43 @@ struct BrightnessPopoverView: View {
                 }
             }
             footer
-        }.frame(width:DeskLayout.width,height:height).background(DeckPaint.ground)
+        }.frame(width:DeskLayout.width,height:height)
+        .background { DeckGlassPanel(withinWindow:materialWithinWindow) }
         .foregroundStyle(DeckPaint.ink).tint(DeckPaint.accent)
     }
     private var header: some View {
         HStack(spacing:7) {
             Image(nsImage:DeskMark.image(.linked)).renderingMode(.original).accessibilityHidden(true)
-            Text("BRIGHTMESS").font(.system(size:12,weight:.bold)).tracking(0.7)
+            Text("BRIGHTMESS").font(DeckPaint.title(14)).tracking(0.4)
             Spacer(minLength:2)
             Text(model.deskStatus=="Live" ? "Air live":model.deskStatus)
                 .lineLimit(1).font(.system(size:11,weight:.medium))
                 .help(model.sourceTitle+" · "+model.sourceAge)
             Button {model.requestAirSync()} label:{
                 Label(model.isSyncing ? "Syncing" : model.justSynced ? "Synced":"Sync now",systemImage:"arrow.clockwise")
+                    .padding(.horizontal,8).padding(.vertical,4)
+                    .background(DeckPaint.button,in:Capsule())
+                    .overlay(Capsule().strokeBorder(DeckPaint.rule))
             }.buttonStyle(.plain).font(.system(size:11,weight:.semibold)).disabled(model.isSyncing)
-        }.padding(.horizontal,16).frame(height:36)
-        .foregroundStyle(DeckPaint.cream).background(DeckPaint.forest)
-        .overlay(alignment:.bottom){Rectangle().fill(DeckPaint.cream.opacity(0.2)).frame(height:1)}
+        }.padding(.horizontal,16).frame(height:40)
+        .foregroundStyle(DeckPaint.ink)
+        .overlay(alignment:.bottom){Rectangle().fill(DeckPaint.rule).frame(height:0.5)}
     }
     private var levels:some View {
         VStack(alignment:.leading,spacing:12){
             HStack{
-                Text("Display levels").font(.system(size:15,weight:.bold));Spacer()
+                Text("Display levels").font(DeckPaint.title(16));Spacer()
                 Text("\(displays.filter{$0.connectionState.isConnected}.count) connected").font(.caption).foregroundStyle(DeckPaint.muted)
             }
             if let notice=model.syncNotice{Label(notice,systemImage:"info.circle").font(.caption)}
             if displays.isEmpty {
                 ContentUnavailableView("No external displays",systemImage:"display",description:Text("Connect a display or choose Re-detect in Desk details."))
             } else {
-                LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())],alignment:.leading,spacing:12) {
+                LazyVGrid(columns:[GridItem(.flexible(),spacing:8),GridItem(.flexible())],alignment:.leading,spacing:8) {
                     ForEach(displays){state in DeskScreenStrip(model:model,state:state)}
                 }
             }
-        }.padding(.horizontal,16).padding(.vertical,12).frame(maxWidth:.infinity,minHeight:195,alignment:.topLeading)
-        .overlay(alignment:.top){Divider()}
+        }.padding(.horizontal,16).padding(.vertical,12).frame(maxWidth:.infinity,minHeight:174,alignment:.topLeading)
     }
     private var footer: some View {
         HStack {
@@ -116,19 +120,19 @@ struct BrightnessPopoverView: View {
         .font(.system(size: 12, weight: .medium))
         .buttonStyle(.borderless)
         .padding(.horizontal, 16).padding(.vertical, 11)
-        .background(DeckPaint.ground)
-        .overlay(alignment: .top) { Divider() }
+        .overlay(alignment: .top) { Rectangle().fill(DeckPaint.rule).frame(height:0.5) }
     }
 
     private var tools: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Source details").font(.headline)
+            Text("Source details").font(DeckPaint.title(16))
             Text(model.sourceTitle + " · " + model.sourceAge)
             Text(model.ambientDetail)
             Text(model.receiverStatus)
             Text(model.keyboardStatus.title)
             if model.receiverStatus.hasPrefix("Receiver failed") { Text("Open the log to inspect the receiver.").foregroundStyle(.orange) }
             HStack {
+                Button("Check my setup",systemImage:"checklist"){model.openSetupReport?()}
                 Button("Re-detect", systemImage: "arrow.triangle.2.circlepath", action: model.redetectHardware)
                 Button("Open log", systemImage: "doc.text.magnifyingglass", action: model.openLog)
             }
@@ -137,7 +141,7 @@ struct BrightnessPopoverView: View {
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(DeckPaint.ground, in: RoundedRectangle(cornerRadius: 9))
+        .background(DeckPaint.button, in: RoundedRectangle(cornerRadius: 9))
     }
 }
 
@@ -152,7 +156,7 @@ private struct SourceDeckTV: View {
             TVStrip(remote:remote,shortcuts:shortcuts,display:candidate.id)
         } else {
             Text("No paired TV").font(.headline).padding().frame(maxWidth:.infinity,alignment:.leading)
-                .foregroundStyle(DeckPaint.cream).background(DeckPaint.forest)
+                .foregroundStyle(DeckPaint.ink)
         }
     }
 }
@@ -260,7 +264,9 @@ private struct DeskScreenStrip: View {
                     }
                 }
                 if let error=frontError {Text(error).font(.caption).foregroundStyle(DeckPaint.muted)}
-            }.padding(.trailing,7).frame(maxWidth:.infinity,alignment:.leading)
+            }.padding(8).frame(maxWidth:.infinity,alignment:.leading)
+                .background(DeckPaint.button,in:RoundedRectangle(cornerRadius:11))
+                .overlay(RoundedRectangle(cornerRadius:11).strokeBorder(DeckPaint.rule,lineWidth:1))
         }
     }
     private func stepButton(_ direction: BrightnessStepDirection, _ icon: String, _ verb: String) -> some View {

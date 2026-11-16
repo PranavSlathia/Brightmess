@@ -12,6 +12,9 @@ import BrightnessCore
         guard let destination=screens.first(where:{$0.name==expectedScreen}) else{throw TVError("Fixture destination missing")}
         let entries=await port.fixtureInventory(owner:app.processIdentifier,excluding:destination.id,screens:screens)
         guard entries.count==1,let window=entries.first else{throw TVError("Expected exactly one eligible disposable fixture window")}
+        let appAX=AXUIElementCreateApplication(app.processIdentifier)
+        let enhancedBefore=AXDesk.value(appAX,"AXEnhancedUserInterface") as? Bool
+        print("Owned fixture enhanced UI before: \(String(describing:enhancedBefore))")
         print("Fixture before: id=\(window.nativeWindowID ?? 0), state=\(window.retrievalState), frame=\(String(describing:AXDesk.frame(window.element)))")
         do {
             try await port.retrieve(window,to:destination.id){print("Fixture progress: \($0)")}
@@ -19,6 +22,8 @@ import BrightnessCore
             print("Fixture after error: expected id=\(window.nativeWindowID ?? 0), current id=\(WindowServerGeometry.id(window.element) ?? 0), raw AX=\(String(describing:AXDesk.accessibilityFrame(window.element))), frame=\(String(describing:AXDesk.frame(window.element)))")
             throw error
         }
+        let enhancedAfter=AXDesk.value(appAX,"AXEnhancedUserInterface") as? Bool
+        guard enhancedBefore==enhancedAfter else{throw TVError("Fixture enhanced UI state changed after movement")}
         print("Fixture move verified to \(expectedScreen).")
     }
     static func run() throws {

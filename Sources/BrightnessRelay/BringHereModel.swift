@@ -3,14 +3,17 @@ import BrightnessCore
 
 @MainActor final class BringHereModel {
     enum Stage:Equatable {case closed,loading,apps,group(String),search,working,problem(String)}
-    struct Row {let key:String,app:String,detail:String,windows:[DeskWindow]}
+    struct Row {let key:String,app:String,detail:String,windows:[DeskWindow];var pinned=false}
     let port:any WindowRetrievalPort
+    let preferences:PickerPreferences
+    private var recent=RecentWindowHistory()
+    private var snapshotPins=[PinnedApplication]()
     private(set) var stage=Stage.closed,destination:UInt32?
     private(set) var entries=[DeskWindow](),selected=0,query="",progress="",notice=""
     private(set) var successfulMoves=0
     var changed:(()->Void)?,succeeded:((DeskWindow)->Void)?
     private var task:Task<Void,Never>?,ticket=UUID()
-    init(port:(any WindowRetrievalPort)?=nil){self.port=port ?? MacWindowDesk()}
+    init(port:(any WindowRetrievalPort)?=nil,preferences:PickerPreferences?=nil){self.port=port ?? MacWindowDesk();self.preferences=preferences ?? PickerPreferences()}
     var visible:Bool {stage != .closed}
     var working:Bool {stage == .working}
     var title:String {"Bring to "+(port.screens.first{$0.id==destination}.map{friendly($0.name)} ?? "display")}
@@ -32,7 +35,7 @@ import BrightnessCore
         case .apps:
             return catalog.groups.map { group in
                 let windows=group.entries.compactMap{entry in entries.first{$0.id==entry.id}}
-                return Row(key:group.key,app:group.name,detail:windows.count==1 ? detail(windows[0]):"\(windows.count) windows",windows:windows)
+                return Row(key:group.key,app:group.name,detail:windows.count==1 ? detail(windows[0]):"\(windows.count) windows",windows:windows,pinned:windows.contains{w in snapshotPins.contains{$0.id==w.bundleID}})
             }
         case .group(let key):
             let group=catalog.groups.first{$0.key==key}
@@ -58,6 +61,8 @@ import BrightnessCore
             stage = .problem("Destination disconnected. Reopen on a connected screen.");changed?();return
         }
         guard screens.count>1 else{stage = .problem("Connect another Mac display to bring windows here.");changed?();return}
+        snapshotPins=preferences.pins
+        recent.discardExitedProcesses(Set(NSWorkspace.shared.runningApplications.map(\.processIdentifier)))
         stage = .loading;changed?()
         task=Task { [weak self] in
             guard let self else{return}
@@ -66,7 +71,9 @@ import BrightnessCore
             guard port.trusted,port.screens.map(\.id)==screens.map(\.id) else{
                 stage = .problem("Permission or displays changed. Refresh the choices.");changed?();return
             }
-            self.entries=entries;stage = .apps;changed?()
+            let order=PickerOrdering.ordered(entries.map{.init(id:$0.id,app:$0.app,title:$0.title,bundleID:$0.bundleID,identity:$0.recentIdentity)},pins:snapshotPins,recent:recent.entries)
+            let byID=Dictionary(uniqueKeysWithValues:entries.map{($0.id,$0)})
+            self.entries=order.compactMap{byID[$0]};stage = .apps;changed?()
         }
     }
     func close() {
@@ -127,6 +134,7 @@ import BrightnessCore
                     guard let self,self.ticket==request else{return};self.progress=text;self.changed?()
                 }
                 guard !Task.isCancelled,ticket==request else{return}
+                if let identity=window.recentIdentity {recent.record(identity)}
                 successfulMoves+=1;succeeded?(window);close()
             } catch {
                 guard !Task.isCancelled,ticket==request else{return}
@@ -137,6 +145,7 @@ import BrightnessCore
     var diagnostics:[String:Any] {
         ["visible":visible,"working":working,"moves":successfulMoves,"windowCount":entries.count,"accessibility":port.trusted]
     }
+    func recordMoved(_ window:DeskWindow) {if let identity=window.recentIdentity {recent.record(identity)}}
     #if DEBUG
     func finish() async {await task?.value}
     #endif

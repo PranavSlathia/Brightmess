@@ -52,6 +52,7 @@ struct PairedTV: Codable {
     }
 }
 
+enum TVRemoteFailure:String {case none,connectionUnavailable,identityAccess,identityMismatch}
 @MainActor final class TVRemote: NSObject, ObservableObject, @preconcurrency NetServiceBrowserDelegate, @preconcurrency NetServiceDelegate {
     @Published private(set) var names = [String]()
     @Published private(set) var paired: PairedTV?
@@ -74,6 +75,7 @@ struct PairedTV: Codable {
     private var attemptedHosts = Set<String>(), candidateHosts = [String]()
     private var currentHost: String?
     private(set) var lastConnectionError: String?
+    private(set) var failureCode=TVRemoteFailure.none
     private var browser: NetServiceBrowser?
     private var services = [String:NetService](), hosts = [String:String]()
     private var selected = "", display = "", isPairing = false
@@ -83,6 +85,10 @@ struct PairedTV: Codable {
     }
     private var wanted: Bool { Self.needsSession(panel:panelOpen,keys:backgroundKeys,paired:paired != nil,asleep:asleep) }
     private(set) var lastSent: String?
+    private(set) var messagesSent:UInt64=0
+    var identityOpening:Bool {identityAttempt != nil && busy && socket == nil}
+    @Published var requestedSetup:UUID?
+    @Published var requestedMapping:UUID?
     private var socket: NWConnection?, identity: (any TVClientIdentity)?, peerKey: Data?
     private var generation = UUID()
     private var conversation = TVHandshake(pairing:false), frames = TVFrames()
@@ -196,10 +202,11 @@ struct PairedTV: Codable {
         let c = socket; socket = nil; c?.stateUpdateHandler = nil; c?.cancel()
         ready = false; busy = false; wantsCode = false; identity = nil; peerKey = nil
     }
-    private func fail(_ message: String, retryConnection: Bool = true) {
+    private func fail(_ message: String, retryConnection: Bool = true,code:TVRemoteFailure = .connectionUnavailable) {
         let mayRetry = retryConnection && !isPairing && wanted && paired?.service == selected
         stop(); notice = message
         lastConnectionError = message
+        failureCode=code
         guard mayRetry else { return }
         if !candidateHosts.isEmpty, let p = paired {
             let host = candidateHosts.removeFirst()
@@ -257,7 +264,7 @@ struct PairedTV: Codable {
         notice = "Opening saved TV identity. Approve the macOS Keychain request if shown."
         let identityDeadline=DispatchWorkItem { [weak self] in
             guard let self,self.generation==ticket,self.socket==nil else{return}
-            self.fail("Keychain did not finish opening the TV identity. Complete its macOS prompt, then choose Reconnect or Pair again. Saved pairing is unchanged.",retryConnection:false)
+            self.fail("Keychain did not finish opening the TV identity. Complete its macOS prompt, then choose Reconnect or Pair again. Saved pairing is unchanged.",retryConnection:false,code:.identityAccess)
         }
         deadline=identityDeadline
         DispatchQueue.main.asyncAfter(deadline:.now()+identityTimeout,execute:identityDeadline)
@@ -272,7 +279,7 @@ struct PairedTV: Codable {
                 self.connectTLS(name,display:display,pairing:pairing,host:host,client:client)
             } catch {
                 guard self.generation == ticket else { return }
-                self.fail(error.localizedDescription,retryConnection:false)
+                self.fail(error.localizedDescription,retryConnection:false,code:.identityAccess)
             }
         }
     }
@@ -305,7 +312,7 @@ struct PairedTV: Codable {
                       let raw = SecKeyCopyExternalRepresentation(key,nil) as Data?,
                       (try? TVDER.rsaComponents(raw)) != nil else { complete(false); return }
                 guard TVTrust.accepts(raw,pairing:pairing,pinned:expected) else {
-                    complete(false); self.fail("Device identity did not match the paired TV. No commands sent."); return
+                    complete(false); self.fail("Device identity did not match the paired TV. No commands sent.",code:.identityMismatch); return
                 }
                 self.peerKey = raw; complete(true)
                 }
@@ -329,12 +336,14 @@ struct PairedTV: Codable {
             c.start(queue:.main)
         } catch { fail(error.localizedDescription,retryConnection:false) }
     }
-    private func send(_ message: Data,on c: NWConnection, label: String? = nil) {
+    private func send(_ message: Data,on c: NWConnection, label: String? = nil,completion:((Error?)->Void)?=nil) {
+        if messagesSent < .max {messagesSent+=1}
         c.send(content:TVWire.frame(message),completion:.contentProcessed { [weak self,weak c] err in
             MainActor.assumeIsolated {
-            guard let self, let c, self.socket === c else { return }
+            guard let self, let c, self.socket === c else {completion?(TVError("TV connection changed. The command was not retried."));return}
             if err != nil { self.fail("Could not send to TV. Nothing will be retried.") }
             else if let label { self.lastSent = label; self.notice = "Command sent · "+label }
+            completion?(err)
             }
         })
     }
@@ -370,11 +379,12 @@ struct PairedTV: Codable {
     }
     private func sessionReady() {
         guard let raw = peerKey, let p = paired, TVTrust.accepts(raw,pairing:false,pinned:p.pin) else {
-            fail("Device identity did not match the paired TV. No commands sent."); return
+            fail("Device identity did not match the paired TV. No commands sent.",code:.identityMismatch); return
         }
         var saved = p; saved.lastHost = currentHost
         persist(saved)
         deadline?.cancel(); ready = true; busy = false; retryDelay = 2; lastConnectionError = nil
+        failureCode = .none
         notice = "TV remote ready"
     }
     func verify(_ code: String) {
@@ -425,5 +435,20 @@ struct PairedTV: Codable {
         guard paired != nil else { notice = "Pair your TV first. No command sent."; return }
         guard let route = paired?.route(a) else { return }
         action(route.code,link:route.link,label:route.label)
+    }
+    func activateFromShortcut(_ action:DeskAction) async throws {
+        guard !fixture,ready,let socket,let route=paired?.route(action) else {
+            throw TVError("TV not ready. Open BRIGHTMESS to reconnect or approve its saved identity. No command queued.")
+        }
+        let message=try conversation.command(code:route.code,inputID:route.link)
+        try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<Void,Error>) in
+            var finished=false
+            let finish:(Error?)->Void = {error in
+                guard !finished else{return};finished=true
+                if let error {continuation.resume(throwing:error)} else{continuation.resume()}
+            }
+            send(message,on:socket,label:route.label,completion:finish)
+            DispatchQueue.main.asyncAfter(deadline:.now()+3) {finish(TVError("TV send timed out. Delivery is unknown; the command will not be retried."))}
+        }
     }
 }

@@ -10,6 +10,8 @@ import BrightnessCore
     var windows:[ArrangementWindow]
     var frames=[String:CGRect]()
     @Published var writes=0
+    var refuseWrites=false
+    var delayCapture=false,capturePending:CheckedContinuation<Void,Never>?
     init(screen:ArrangementDisplay){
         self.screen=screen
         windows=[("Terminal","Build output",CGSize(width:720,height:900)),("Aside","Reading list",CGSize(width:850,height:950)),("Zen","Video reference",CGSize(width:1100,height:650)),("Notes","Project notes",CGSize(width:650,height:750))].enumerated().map { index,item in
@@ -20,10 +22,11 @@ import BrightnessCore
     func display(_ id:UInt32)async->ArrangementDisplay? {id==screen.id ? screen:nil}
     func capture(_ display:ArrangementDisplay)async throws->[ArrangementWindow]{
         guard trusted else{throw TVError("Enable Accessibility for BRIGHTMESS to arrange windows.")}
+        if delayCapture {delayCapture=false;await withCheckedContinuation{capturePending=$0};capturePending=nil;try Task.checkCancellation()}
         return windows.map{.init(id:$0.id,app:$0.app,title:$0.title,frame:frames[$0.id] ?? $0.frame,minimum:$0.minimum,resizable:$0.resizable)}
     }
     func read(_ id:String)async throws->CGRect{guard let frame=frames[id] else{throw TVError("Closed fixture")};return frame}
-    func write(_ id:String,frame:CGRect)async throws{frames[id]=frame;writes+=1}
+    func write(_ id:String,frame:CGRect)async throws{if !refuseWrites{frames[id]=frame};writes+=1}
 }
 
 @MainActor enum ArrangeChecks {
@@ -67,7 +70,40 @@ import BrightnessCore
         model.close();port.trusted=false;model.open(d);await model.finish()
         guard model.plan==nil,model.message.contains("Accessibility") else{throw TVError("Permission state missing")}
         model.close()
+        let quickPort=ArrangeFixturePort(screen:d),quick=ArrangeModel(port:quickPort)
+        // A completion signal belongs only to fully verified Apply, never Undo
+        // or failure. The panel closes without discarding the recovery journal.
+        var completed=0
+        quick.appliedSuccessfully={completed+=1;quick.close()}
+        quick.open(d);await quick.finish();quick.choose(.equal)
+        guard quick.canApply,quick.selected.count==4 else{throw TVError("Arrange did not select all eligible windows")}
+        quick.apply();quick.apply();await quick.finish()
+        guard completed==1,quick.stage == .closed,!quick.canUndo,quickPort.writes==4 else{throw TVError("Success did not dismiss exactly once")}
+        quick.open(d);await quick.finish()
+        guard quick.canUndo else{throw TVError("Auto-dismiss discarded Undo")}
+        quick.apply();await quick.finish()
+        guard completed==2,quick.hasSavedUndo,quickPort.writes==4 else{throw TVError("No-op Apply discarded the last useful Undo")}
+        quick.open(d);await quick.finish()
+        quick.undo();await quick.finish()
+        guard completed==2,quick.stage == .result,!quick.canUndo else{throw TVError("Undo incorrectly auto-dismissed")}
+        quick.close()
+        let failed=ArrangeModel(port:quickPort);quickPort.refuseWrites=true
+        failed.appliedSuccessfully={completed+=100}
+        failed.open(d);await failed.finish();failed.apply();await failed.finish()
+        guard failed.stage == .result,completed==2 else{throw TVError("Partial/refused Apply was dismissed")}
+        failed.close();quickPort.refuseWrites=false;quickPort.delayCapture=true
+        failed.open(d)
+        while quickPort.capturePending == nil {await Task.yield()}
+        let count=quickPort.writes
+        failed.apply();failed.undo()
+        guard !failed.canApply,!failed.canUndo,quickPort.writes==count else{throw TVError("Loading queued a window write")}
+        quickPort.capturePending?.resume();await failed.finish()
+        guard failed.canApply,quickPort.writes==count else{throw TVError("Loading key was replayed after capture")}
+        failed.selectAll(false);failed.apply();await failed.finish()
+        guard !failed.canApply,quickPort.writes==count else{throw TVError("Empty selection applied")}
+        failed.close()
         print("Arrange model checks passed: preview-only, exclusion, mode, apply, undo, topology and denied access.")
+        print("Arrange quick-apply checks passed: all selected, one apply, success-only dismissal, reopen Undo, refusal and loading no-queue.")
     }
     static func render(folder:URL)async throws {
         try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
@@ -83,7 +119,7 @@ import BrightnessCore
             let outlines=ArrangeOutlineView(frame:root.bounds);outlines.plan=model.plan;root.addSubview(outlines)
             root.addSubview(label)
             let hud=NSHostingView(rootView:ArrangeHUD(model:model,close:{}).environment(\.controlActiveState,.key))
-            hud.frame=CGRect(x:(size.width-540)/2,y:24,width:540,height:170);root.addSubview(hud)
+            hud.frame=CGRect(x:(size.width-540)/2,y:24,width:540,height:200);root.addSubview(hud)
             let window=NSWindow(contentRect:root.bounds,styleMask:.borderless,backing:.buffered,defer:false)
             window.isReleasedWhenClosed=false;window.appearance=NSAppearance(named:dark ? .darkAqua:.aqua);window.contentView=root
             root.layoutSubtreeIfNeeded();window.displayIfNeeded()
@@ -100,7 +136,7 @@ import BrightnessCore
                     if state=="expanded"{sample.showWindows=true}
                     if state=="result"{sample.apply();await sample.finish()}
                     let host=NSHostingView(rootView:ArrangeHUD(model:sample,close:{}).environment(\.controlActiveState,.key))
-                    let size=CGSize(width:540,height:state=="expanded" ? 320:170)
+                    let size=CGSize(width:540,height:state=="expanded" ? 350:200)
                     let w=NSWindow(contentRect:CGRect(origin:.zero,size:size),styleMask:.borderless,backing:.buffered,defer:false)
                     w.isReleasedWhenClosed=false;w.appearance=NSAppearance(named:dark ? .darkAqua:.aqua);w.contentView=host
                     host.frame=CGRect(origin:.zero,size:size);host.layoutSubtreeIfNeeded();w.displayIfNeeded()

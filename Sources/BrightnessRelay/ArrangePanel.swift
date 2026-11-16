@@ -51,6 +51,7 @@ final class ArrangeOutlineView:NSView {
 
 struct ArrangeHUD:View {
     @ObservedObject var model:ArrangeModel
+    @FocusState private var applyFocused:Bool
     var close:()->Void
     var body:some View {
         VStack(alignment:.leading,spacing:10) {
@@ -114,21 +115,33 @@ struct ArrangeHUD:View {
                     } else {
                         Button("Apply arrangement"){model.apply()}.keyboardShortcut(.defaultAction)
                             .buttonStyle(.borderedProminent)
-                            .disabled(model.plan == nil || model.working || model.stage != .preview)
+                            .focused($applyFocused).accessibilityIdentifier("arrange.apply")
+                            .disabled(!model.canApply)
                     }
                 }
             }
+            Text(model.waitingForShortcutRelease ? "Release shortcut keys, then press Enter to apply." :
+                 model.stage == .result ? "Enter Done · ⌘Z Undo · Esc Close" :
+                 model.working ? "Esc Stop" : model.canApply ? "Enter Apply · S Smart · E Equal · W Windows · Esc Close" :
+                 model.stage == .loading ? "Finding windows… · Esc Close" : model.windows.isEmpty ? "Tab Options · Space Activate · Esc Close":"S Smart · E Equal · W Windows · Esc Close")
+                .font(.system(size:11)).foregroundStyle(DeckPaint.muted)
+                .fixedSize(horizontal:false,vertical:true)
         }.padding(18).frame(width:540).foregroundStyle(DeckPaint.ink).background(DeckPaint.ground)
             .tint(DeckPaint.accent).clipShape(RoundedRectangle(cornerRadius:12))
+            .onChange(of:model.stage){_,stage in if stage == .preview && model.canApply {applyFocused=true}}
+            .onAppear{if model.canApply {applyFocused=true}}
     }
 }
 
-@MainActor final class ArrangePanelController:NSObject {
+@MainActor final class ArrangePanelController:NSObject,NSWindowDelegate {
     let model:ArrangeModel
     private let outline=NSPanel(contentRect:.zero,styleMask:.borderless,backing:.buffered,defer:false)
     private let outlines=ArrangeOutlineView()
     private let panel=ArrangeKeyPanel(contentRect:CGRect(x:0,y:0,width:540,height:300),styleMask:.borderless,backing:.buffered,defer:false)
     private var observer:NSObjectProtocol?
+    private var focusObserver:NSObjectProtocol?,keyMonitor:Any?
+    private var previous:NSRunningApplication?,lastExternal:NSRunningApplication?
+    private var keys=ArrangeKeyRouter(),applyKeyDown=false,pendingSuccess=false
     init(model:ArrangeModel?=nil){
         self.model=model ?? ArrangeModel();super.init()
         outline.isOpaque=false;outline.backgroundColor = .clear;outline.ignoresMouseEvents=true;outline.hasShadow=false
@@ -136,27 +149,109 @@ struct ArrangeHUD:View {
         outline.contentView=outlines;outline.isReleasedWhenClosed=false
         panel.title="BRIGHTMESS · Arrange here";panel.titleVisibility = .hidden;panel.titlebarAppearsTransparent=true
         panel.isOpaque=false;panel.backgroundColor = .clear;panel.hasShadow=true;panel.isMovableByWindowBackground=true
-        panel.isReleasedWhenClosed=false;panel.level = .floating;panel.collectionBehavior=[.moveToActiveSpace,.fullScreenAuxiliary]
+        panel.isReleasedWhenClosed=false;panel.level = .floating;panel.collectionBehavior=[.moveToActiveSpace,.fullScreenAuxiliary];panel.delegate=self
         panel.standardWindowButton(.closeButton)?.isHidden=true;panel.standardWindowButton(.miniaturizeButton)?.isHidden=true;panel.standardWindowButton(.zoomButton)?.isHidden=true
-        panel.contentView=NSHostingView(rootView:ArrangeHUD(model:self.model,close:{[weak self] in self?.model.close()}))
+        panel.contentView=NSHostingView(rootView:ArrangeHUD(model:self.model,close:{[weak self] in self?.dismiss(restoring:true)}))
         self.model.changed={[weak self] in self?.update()}
+        self.model.appliedSuccessfully={[weak self] in self?.pendingSuccess=true;self?.finishSuccess()}
+        let front=NSWorkspace.shared.frontmostApplication
+        lastExternal=front?.processIdentifier == getpid() ? nil:front
+        focusObserver=NSWorkspace.shared.notificationCenter.addObserver(forName:NSWorkspace.didActivateApplicationNotification,object:nil,queue:.main){[weak self] note in
+            guard let app=note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != getpid(),app.activationPolicy == .regular else{return}
+            MainActor.assumeIsolated{self?.lastExternal=app}
+        }
         observer=NotificationCenter.default.addObserver(forName:NSApplication.didChangeScreenParametersNotification,object:nil,queue:.main){[weak self] _ in MainActor.assumeIsolated{self?.model.topologyChanged()}}
     }
     func toggle(){
-        if model.stage != .closed {model.close();return}
+        if model.stage != .closed {dismiss(restoring:true);return}
         guard let screen=NSScreen.screens.first(where:{$0.frame.contains(NSEvent.mouseLocation)}),let display=ArrangeNativePort.display(for:screen) else{return}
+        prepareOpening()
         model.open(display)
         panel.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
     }
+    func open(destination:UInt32) throws {
+        guard !model.working else{throw TVError("An arrangement is still finishing.")}
+        guard let screen=NSScreen.screens.first(where:{($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value==destination}),let display=ArrangeNativePort.display(for:screen) else{throw TVError("Destination disconnected. No windows moved.")}
+        prepareOpening();model.open(display);panel.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
+    }
+    private func prepareOpening() {
+        let front=NSWorkspace.shared.frontmostApplication
+        previous=front?.processIdentifier==getpid() ? lastExternal:front
+        applyKeyDown=false;pendingSuccess=false
+        keys.opened(modifiers:Self.modifiers(NSEvent.modifierFlags));model.waitingForShortcutRelease = !keys.armed
+        if let keyMonitor{NSEvent.removeMonitor(keyMonitor)}
+        keyMonitor=NSEvent.addLocalMonitorForEvents(matching:[.keyDown,.keyUp,.flagsChanged]){[weak self] event in
+            guard let self else{return event};return self.handle(event)
+        }
+    }
+    private static func modifiers(_ flags:NSEvent.ModifierFlags)->ArrangeKeyRouter.Modifiers {
+        var result=ArrangeKeyRouter.Modifiers()
+        for (flag,value) in [(NSEvent.ModifierFlags.command,ArrangeKeyRouter.Modifiers.command),(.control,.control),(.option,.option),(.shift,.shift)] {
+            if flags.contains(flag){result.insert(value)}
+        };return result
+    }
+    private func handle(_ event:NSEvent)->NSEvent? {
+        if event.type == .flagsChanged {
+            keys.flagsChanged(Self.modifiers(event.modifierFlags));publishArming();return event
+        }
+        let enter=event.keyCode==36 || event.keyCode==76
+        if event.type == .keyUp {
+            if enter && applyKeyDown {applyKeyDown=false;finishSuccess();return nil};return event
+        }
+        let names:[UInt16:String]=[36:"return",76:"enter",53:"escape"]
+        let key=names[event.keyCode] ?? event.charactersIgnoringModifiers?.lowercased() ?? ""
+        let phase:ArrangeKeyRouter.Phase
+        switch model.stage {case .closed:phase = .closed;case .loading:phase = .loading;case .preview:phase = .preview;case .applying:phase = .applying;case .result:phase = .result}
+        let action=keys.route(key:key,modifiers:Self.modifiers(event.modifierFlags),repeating:event.isARepeat,
+            isKeyWindow:panel.isKeyWindow,phase:phase,canApply:model.canApply,canUndo:model.canUndo,
+            hasWindows:!model.windows.isEmpty,editingText:(panel.firstResponder as? NSTextView)?.isEditable == true)
+        publishArming()
+        switch action {
+        case .pass:return event
+        case .consume:break
+        case .apply:applyKeyDown=enter;model.apply()
+        case .close:dismiss(restoring:true)
+        case .smart:model.choose(.smart)
+        case .equal:model.choose(.equal)
+        case .windows:model.toggleWindows()
+        case .undo:model.undo()
+        }
+        return nil
+    }
+    private func publishArming(){if model.waitingForShortcutRelease != !keys.armed {model.waitingForShortcutRelease = !keys.armed}}
+    private func finishSuccess() {
+        guard pendingSuccess,model.stage == .result,(!applyKeyDown || !panel.isKeyWindow) else{return}
+        pendingSuccess=false
+        NSAccessibility.post(element:NSApp as Any,notification:.announcementRequested,
+            userInfo:[.announcement:model.message,.priority:NSAccessibilityPriorityLevel.medium.rawValue])
+        dismiss(restoring:true)
+    }
+    private func dismiss(restoring:Bool) {
+        let app=previous
+        model.close()
+        if model.stage == .closed,restoring,NSWorkspace.shared.frontmostApplication?.processIdentifier==getpid(),let app,!app.isTerminated {
+            app.activate(options:[])
+        }
+    }
+    func windowDidResignKey(_ notification:Notification){applyKeyDown=false;finishSuccess()}
     private func update(){
-        guard model.stage != .closed,let display=model.display else{outline.orderOut(nil);panel.orderOut(nil);return}
+        guard model.stage != .closed,let display=model.display else{
+            pendingSuccess=false;applyKeyDown=false;outline.orderOut(nil);panel.orderOut(nil)
+            if let keyMonitor{NSEvent.removeMonitor(keyMonitor)};keyMonitor=nil;previous=nil;return
+        }
         guard let screen=NSScreen.screens.first(where:{($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value==display.id}) else{outline.orderOut(nil);return}
         if model.stage == .preview,let plan=model.plan {
             outline.setFrame(screen.visibleFrame,display:true);outlines.frame=CGRect(origin:.zero,size:screen.visibleFrame.size);outlines.plan=plan;outline.orderFrontRegardless()
         } else {outline.orderOut(nil)}
-        let f=screen.visibleFrame,height:CGFloat=model.stage == .preview && model.showWindows ? 320:170
+        let f=screen.visibleFrame,height:CGFloat=model.stage == .preview && model.showWindows ? 350:200
         panel.setContentSize(CGSize(width:min(540,f.width-32),height:min(height,f.height-60)))
         panel.setFrameOrigin(CGPoint(x:f.midX-panel.frame.width/2,y:f.minY+24));panel.orderFrontRegardless()
     }
-    func stop(){model.close();outline.orderOut(nil);panel.orderOut(nil);if let observer{NotificationCenter.default.removeObserver(observer)};observer=nil}
+    func stop(){
+        model.close();model.changed=nil;model.appliedSuccessfully=nil;outline.orderOut(nil);panel.orderOut(nil)
+        if let keyMonitor{NSEvent.removeMonitor(keyMonitor)};keyMonitor=nil
+        if let observer{NotificationCenter.default.removeObserver(observer)};observer=nil
+        if let focusObserver{NSWorkspace.shared.notificationCenter.removeObserver(focusObserver)};focusObserver=nil
+    }
 }

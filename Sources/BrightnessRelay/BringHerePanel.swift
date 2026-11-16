@@ -1,4 +1,6 @@
 import AppKit
+import SwiftUI
+import BrightnessCore
 
 enum BringPaint {
     static func rgb(_ hex:UInt32)->NSColor {NSColor(srgbRed:CGFloat((hex>>16)&255)/255,green:CGFloat((hex>>8)&255)/255,blue:CGFloat(hex&255)/255,alpha:1)}
@@ -32,7 +34,12 @@ final class BringRow:NSButton {
         let image=NSImageView(frame:NSRect(x:8,y:9,width:28,height:28))
         image.image=icon ?? NSImage(systemSymbolName:"macwindow",accessibilityDescription:row.app)
         image.contentTintColor=BringPaint.ink(dark);addSubview(image)
-        addSubview(bringLabel(row.app,size:13,weight:.semibold,color:BringPaint.ink(dark),frame:NSRect(x:46,y:5,width:253,height:20)))
+        addSubview(bringLabel(row.app,size:13,weight:.semibold,color:BringPaint.ink(dark),frame:NSRect(x:46,y:5,width:row.pinned ? 231:253,height:20)))
+        if row.pinned {
+            let pin=NSImageView(frame:NSRect(x:281,y:8,width:14,height:14))
+            pin.image=NSImage(systemSymbolName:"pin.fill",accessibilityDescription:"Pinned app")
+            pin.contentTintColor=BringPaint.muted(dark);addSubview(pin)
+        }
         addSubview(bringLabel(row.detail,size:11.5,color:BringPaint.muted(dark),frame:NSRect(x:46,y:24,width:253,height:18)))
         if !row.key.isEmpty {
             let key=bringLabel(row.key,size:14,weight:.medium,color:BringPaint.ink(dark),frame:NSRect(x:309,y:11,width:26,height:25))
@@ -61,6 +68,7 @@ final class BringRow:NSButton {
     private var previous:NSRunningApplication?,lastExternal:NSRunningApplication?
     private var queryField:NSSearchField?,lastStage=BringHereModel.Stage.closed
     private var lastAnnouncement=""
+    private var pinsWindow:NSWindow?
     private var icons=[String:NSImage](),armed=true,restoreOnClose=true,closing=false
     var requestAccess:(()->Void)?
     var fixtureAppearance:Bool?
@@ -124,7 +132,8 @@ final class BringRow:NSButton {
     func draw(){
         let dark=fixtureAppearance ?? (NSApp.effectiveAppearance.bestMatch(from:[.darkAqua,.aqua]) == .darkAqua)
         panel.appearance=NSAppearance(named:dark ? .darkAqua:.aqua)
-        let visibleRows=max(3,min(6,model.rows.count)),height=CGFloat(160+visibleRows*48)+(model.notice.isEmpty ? 0:34)
+        let managesPins=model.stage == .apps
+        let visibleRows=max(3,min(6,model.rows.count)),height=CGFloat(160+visibleRows*48)+(model.notice.isEmpty ? 0:34)+(managesPins ? 28:0)
         panel.setContentSize(NSSize(width:376,height:height));root.frame=NSRect(x:0,y:0,width:376,height:height)
         let keepSearch=model.stage == .search && lastStage == .search
         root.subviews.filter{!keepSearch || $0 !== queryField}.forEach{$0.removeFromSuperview()}
@@ -183,6 +192,11 @@ final class BringRow:NSButton {
         default:footer="Esc Close"
         }
         root.addSubview(bringLabel(footer,size:12,color:muted,frame:NSRect(x:16,y:height-29,width:344,height:21)))
+        if managesPins {
+            let manage=BringButton("Manage pinned apps…",frame:NSRect(x:16,y:height-72,width:174,height:24)){[weak self] in self?.managePins()}
+            manage.keyEquivalent=",";manage.keyEquivalentModifierMask=[.command]
+            manage.toolTip="Manage pinned apps (Command–Comma)";root.addSubview(manage)
+        }
         root.setAccessibilityLabel(model.title)
         if model.stage != lastStage {NSAccessibility.post(element:root,notification:.layoutChanged)}
         if model.rows.indices.contains(model.selected) {
@@ -197,6 +211,20 @@ final class BringRow:NSButton {
         lastStage=model.stage
     }
     func controlTextDidChange(_ notification:Notification){if let field=notification.object as? NSSearchField {model.search(field.stringValue)}}
+    private func managePins() {
+        let apps=NSWorkspace.shared.runningApplications.filter{$0.activationPolicy == .regular}.compactMap { app -> PinnedApplication? in
+            guard let id=app.bundleIdentifier else{return nil};return .init(id:id,name:app.localizedName ?? id)
+        }
+        let unique=Dictionary(apps.map{($0.id,$0)},uniquingKeysWith:{first,_ in first}).values.sorted{$0.name<$1.name}
+        let origin=panel.frame.origin
+        dismiss(restoring:false)
+        if pinsWindow == nil {
+            pinsWindow=NSWindow(contentRect:NSRect(x:origin.x,y:origin.y,width:440,height:390),styleMask:[.titled,.closable],backing:.buffered,defer:false)
+            pinsWindow?.isReleasedWhenClosed=false;pinsWindow?.title="BRIGHTMESS · Pinned apps"
+        }
+        pinsWindow?.contentView=NSHostingView(rootView:PinnedAppsView(preferences:model.preferences,available:unique))
+        pinsWindow?.makeKeyAndOrderFront(nil)
+    }
     private func installKeys(){
         if let monitor{NSEvent.removeMonitor(monitor)}
         monitor=NSEvent.addLocalMonitorForEvents(matching:[.keyDown,.flagsChanged]){[weak self] event in

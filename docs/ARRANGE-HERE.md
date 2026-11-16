@@ -72,7 +72,8 @@ inspect outlines, Apply, then Undo or Done. Nothing moves while previewing.
 
 FIRST VIEWPORT: screen-sized transparent outlines; app-labelled zones; one compact
 floating control panel with mode, selectable windows, status and Apply/Cancel.
-After applying, outlines disappear and the control panel offers Undo and Done.
+In build 33, complete Apply dismisses the outlines and control panel; reopen
+for Undo. Partial results, errors and Undo results retain the control panel.
 
 FORM: user-pinned Operate extension; code-led; no concept tournament. Existing
 Source Deck controls and shortcuts remain. New shortcut is unassigned initially.
@@ -92,7 +93,11 @@ release gate. This is an extension of the existing DESIGN.md, not a replacement.
    cell is possible when the count does not divide evenly.
 4. **Windows** expands a checklist with All/None. Deselecting a window changes only the preview.
    **Refresh** scans again and resets selection to the eligible windows.
-5. **Apply arrangement** (Return) performs the changes. **Undo** (Command-Z)
+5. **Apply arrangement** (Return) performs the changes. In staged build 33,
+   release the opening chord, then press a fresh Enter/keypad Enter; Apply does
+   not depend on control focus. S/E choose Smart/Equal and W opens the checklist.
+   All eligible windows start selected. Successful Apply closes the bar; reopen
+   it for **Undo** (Command-Z), which
    restores exact, unchanged window identities. **Close** (Escape) exits preview;
    while applying, it becomes **Stop** and preserves verified recovery records.
 
@@ -125,7 +130,8 @@ backgrounds. They are not screenshots of Pranav's desktop or installed-app proof
 - Explicit per-window writes; bounded readback; stop on failure or changed topology.
 - Undo is in-memory and skips windows changed since the verified write.
 - A delayed or refused Undo keeps its guarded recovery entries for another try.
-- A new Apply replaces the previous one-level Undo; closing the preview does not.
+- A new meaningful Apply replaces the previous one-level Undo; closing the
+  preview or applying an already-correct layout does not.
 - No minimum-size probing by destructive trial resizing. If an app clamps a size
   not reported through Accessibility, stop and offer Undo/exclusion, rather than
   repeatedly fighting the app.
@@ -133,6 +139,11 @@ backgrounds. They are not screenshots of Pranav's desktop or installed-app proof
 - No physical-display power, HDMI source, brightness or pairing changes.
 
 ## Source provenance
+
+Build-33 keyboard and frame-writer evidence, current fixture controls, and the
+not-yet-installed acceptance boundary are in
+[Window reliability 0.14.1](WINDOW-RELIABILITY-0.14.1.md). The older full-outline
+previews above document the initial release, not the new key legend.
 
 `ArrangementGrid.swift` adapts pure allocation from Rectangle revision
 `0698b04de4349f806beeb2e27b1ef9ab71b537b2`,

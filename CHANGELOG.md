@@ -1,5 +1,60 @@
 # BRIGHTMESS release history
 
+## 0.14.1 · Reliable moves and quick Apply (Mini build 33, staged)
+
+- Share one identity-checked, serialized frame writer across Bring Here,
+  focused/shelf moves and Arrange. Temporarily suppress enhanced-UI animation
+  only for that batch and verify restoration; preserve VoiceOver/Switch Control.
+  No replayed move or background polling is added.
+- Handle AppKit reporting a failed enhanced-UI write after the value actually
+  changed: require positive readback for disable and restore.
+- Make a fresh Enter/keypad Enter apply the ready arrangement independently
+  of focused control. Select all eligible windows on open; provide S/E/W,
+  Escape and Command-Z hints while preserving Tab/Space and repeat guards.
+- Dismiss only a fully successful Apply. Retain errors and partial results;
+  reopening exposes Undo. A no-op Apply no longer erases previous recovery.
+- Pass 78 Swift tests, 27 core checks and expanded executable simulations.
+  Native fixture round trips, maximized/full-screen retrieval and the real
+  Arrange keyboard panel passed; actual ChatGPT acceptance remains pending.
+- Stage with the existing signing identity and three validated App Intents.
+  Build 32 remains installed. No TV input, Air, Flow, Universal Control or
+  mouse mappings changed. [Evidence and install gate](docs/WINDOW-RELIABILITY-0.14.1.md).
+- User confirmed Bring Here and Arrange worked on 16 November; read-only
+  inspection still found installed build 32, so this is not labeled build-33
+  installed acceptance.
+
+## 0.14.0 · Faster access and setup checks (Mini build 32)
+
+- Add persistent app pins, initially Aside, Codex, Terminal, Zen and Finder;
+  reorder/remove/add through Manage pinned apps. Recent successful retrievals
+  stay in bounded memory, keyed by process birth and exact window identity.
+- Keep initial/number/search navigation, frozen per-open ordering and all
+  existing window safety checks. No background usage tracking.
+- Add native App Intents for Bring Here, arrangement preview and mapped TV
+  sources; extract and validate all three actions during bundle packaging.
+- Return text values instead of spoken/result dialogs: the native build-31
+  trial exposed a competing Show When Run dialog that could dismiss the picker.
+  Build 32 removes that extra UI; native Open Bring Here now completes normally.
+- Add Check my setup with explicit recovery actions and a frozen export
+  preview. Export only allowlisted statuses and counters, never raw status,
+  logs, pairing credentials, addresses or personal window titles.
+- Add request/message counters, quiet-traffic regression tests and an
+  on-demand CPU/counter measurement rejecting restarts and sleep.
+- Preserve Mini signing identity and Air protocol compatibility. Build 32 is
+  installed on the development Mini, with existing settings, TV connection,
+  Air freshness and keyboard permission retained. See the separate automated,
+  native and remaining physical checks in [verification](docs/WORKFLOWS-0.14.md).
+
+## 0.13.1 · Solar Glass (Mini build 30)
+
+- Install the full-panel gold/orange/coral glass design, with a deeper
+  orange-red sunset in dark mode and rounded system headings.
+- Preserve Arrange Here, guarded Undo, existing shortcuts, TV pairing,
+  calibration and Follow settings from build 29.
+- Use grouped native glass keys on macOS 26+, with Reduce Transparency and
+  Reduce Motion fallbacks. Keep all existing actions and routes.
+- Retain predecessor-hash and signing-continuity checks in the installer.
+
 ## 0.13.0 · Arrange here (Mini build 29)
 
 - Add a display-local Arrange action, configurable icon and optional

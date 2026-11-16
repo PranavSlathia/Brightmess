@@ -1,4 +1,4 @@
-# BRIGHTMESS
+# <img src="Assets/Brand/BRIGHTMESS.icon/Assets/BrightestMess.png" width="56" height="56" alt=""> BRIGHTMESS
 
 BRIGHTMESS is a native macOS menu-bar app for a desk with more than one
 screen. Its **Source Deck** popover lets you follow a MacBook Air's brightness,
@@ -18,25 +18,46 @@ needed. See the [current mapping record](research/TCL-REMAP-0.11.1.md).
 [TCL setup and field notes](research/LIGHT-DESK-0.9.md#verified-return-to-hdmi-3-over-wi-fi) ·
 [Release history](CHANGELOG.md)
 
-**0.13.0 (Mini build 29):** **Arrange this screen** previews full-screen window
-zones on the pointer's display, with Smart/Equal layouts, individual selection,
-Apply and guarded Undo. It preserves the build-27 sun mark and the
-[window-transition fixes](research/WINDOW-TRANSITIONS-0.12.3.md).
-See the [feature and verification record](docs/ARRANGE-HERE.md).
+**0.13.1 (Mini build 30):** Solar Glass brings the sun colours across the
+whole panel while preserving **Arrange this screen**, Smart/Equal layouts,
+individual window selection and guarded Undo from build 29. See the
+[Arrange Here record](docs/ARRANGE-HERE.md). No Air update is required.
+
+**0.14.0 (Mini build 32, installed on the development desk):** Bring Here
+adds editable app pins and session-only recent moves. Three native Shortcuts
+actions open Bring Here, preview Arrange Here, or send a saved TV source.
+**Desk details → Check my setup** provides a read-only report and a reviewed,
+privacy-safe JSON export. [Behavior, fixtures and verification](docs/WORKFLOWS-0.14.md).
+The Air helper does not need an update. All three actions are visible in the
+native Shortcuts app, and Open Bring Here completes with a text result. Build
+32 removes the competing Shortcuts dialog found in build 31. Further physical
+acceptance is recorded separately from build and fixture proof.
+
+**0.14.1 (Mini build 33, staged—not installed):** one guarded frame writer
+fixes the resize-on-source failure shared by window-move paths. Arrange opens
+with eligible windows selected: release the shortcut, then press **Enter** to
+apply, regardless of which control has focus. Successful Apply closes the bar;
+reopen it and press **⌘Z** to Undo. See the [verification and rollout gate](docs/WINDOW-RELIABILITY-0.14.1.md).
+Build 32 remains installed until explicit approval; no Air update is needed.
+On 16 November, the user confirmed Bring Here and Arrange worked in their
+hands-on check. This is recorded separately from build-33 installation proof.
 
 ## Menu-bar controls
 
-Click the colourful sun in the menu bar to open **Source Deck** (Mini 0.13.0,
-build 29). TV sources come first, then windows from your other display, then
-independent display controls. The small display shapes use macOS desktop
-proportions; they do not claim a panel's physical size or native resolution.
+Open **Source Deck** from the menu bar. TV sources come first, then windows
+from your other display, then independent display controls. The small display
+shapes use macOS desktop proportions, not physical size or native resolution.
 Click the shape or **Details** for readings and calibration. No Air update is needed.
 
-[The Brightest Mess](Assets/Brand/README.md) is a winking sun with one runaway
-amber ray. [See the actual-size menu
-mark](docs/brand-icons-1x.png), including solar and attention on light and dark bars.
+**The brightest mess.** The [BRIGHTMESS mark](Assets/Brand/README.md) is
+a winking sun with a lopsided grin and one runaway ray. [See the app icon and actual-size
+menu marks](docs/brand-icons-1x.png) on light and dark bars.
 
-![Native Source Deck with three TV sources and individually selectable windows; synthetic data](docs/source-deck.png)
+**Solar Glass:** the entire translucent panel flows from
+gold through orange to coral. Dark mode becomes a deeper orange-red sunset,
+not neutral charcoal. Glass keys and all controls remain. [See sunset mode](docs/source-deck-dark.png).
+
+![Solar Glass native preview on a synthetic background, with fixture TV controls, window tiles and display brightness](docs/source-deck.png)
 
 **Bring a window here:** Open the menu on Samsung and click an app icon and
 window title under **From Beyond TV**. Open it on the TV to bring windows
@@ -55,7 +76,11 @@ than matching app names or equal-sized browser windows. See the
 **Arrange this screen:** Open the dedicated control bar and full-screen outlines
 on the display under the pointer. Smart considers window proportions and size
 limits; Equal uses equal-size zones. Open **Windows** to select All, None or
-individual windows, then **Apply arrangement** (Return). **Undo** (Command-Z)
+individual windows, then **Apply arrangement** (Return). In the staged build 33,
+all eligible windows start selected; **S** chooses Smart, **E** Equal and **W**
+opens the checklist. Release the opening shortcut before a fresh Enter to apply.
+Successful Apply dismisses the bar; partial results and errors stay visible.
+Reopen the preview for **Undo** (Command-Z), which
 restores exact windows only if they have not since changed. Escape closes the
 preview, or stops further steps during application. Nothing moves while choosing
 a layout. Full-screen, minimized and other-Space windows stay untouched.
@@ -184,7 +209,7 @@ back out. **Left / Right** changes destination outside search mode. The heading
 always names where the window will go; the initial destination is the display
 under the pointer, not the stranded window's display.
 
-You can also choose **Open window picker** in the window shelf, or change/clear
+You can also choose **Window picker** (**Open window picker** in earlier builds) in the window shelf, or change/clear
 its global binding under **Shortcuts & icons**. The new default is offered only
 once and only if the system registration succeeds; existing bindings are not
 overwritten. VoiceOver users should choose a chord that does not conflict with
@@ -385,6 +410,11 @@ authenticated control channel. It never applies a layout without confirmation.
 The current CLT SwiftBuild engine has duplicate platform specifications.
 `scripts/swiftpm.sh` selects the native engine without modifying system files.
 
+Use `scripts/preview-deck.sh` (optionally `--dark`, `--small` or `--opaque`)
+for an isolated native preview app. It does not install or restart the receiver.
+Capture that window for glass screenshots: offscreen `panel-preview` bitmaps
+omit WindowServer-composited glass and are layout evidence only.
+
 ```sh
 ./scripts/swiftpm.sh build -c release
 .build/release/brightness-self-test
@@ -397,9 +427,10 @@ sensor validity/expiry, backwards compatibility, authenticated and replay-safe
 packets, keyboard steps and disconnect policy. The Swift Testing suite remains
 under Tests/; select a full Xcode toolchain when Command Line Tools lacks Testing.
 
-The Mini's bundle version is **0.13.0**, while the compatible receiver API
+The candidate Mini bundle version is **0.14.1** (build **33**); the development
+desk still runs **0.14.0** (build **32**). The compatible receiver API
 still reports **0.8.0**. In `status`, check `controls.uiBuild` for the Mini
-build (`29`), and `sourceMode` for the Air's mode. `controls.arrangeHere`
+build, and `sourceMode` for the Air's mode. `controls.arrangeHere`
 reports visibility, work state and counts without window titles. Examples:
 
 ```sh

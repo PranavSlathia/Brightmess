@@ -50,6 +50,7 @@ import BrightnessHardware
     static func render(_ args: CLIArguments) throws {
         guard let path = args.positional(at: 0) else { throw CLIError.missingValue("output PNG") }
         let interactive = args.values.contains("--window")
+        let backdrop = args.values.contains("--backdrop")
         _ = NSApplication.shared
         if interactive { NSApp.setActivationPolicy(.regular) }
         let name: NSAppearance.Name = args.values.contains("--dark") ? .darkAqua : .aqua
@@ -107,20 +108,39 @@ import BrightnessHardware
             view = AnyView(ScrollView {
                 TVStrip(remote:model.tv,shortcuts:model.shortcuts,display:"test-desk-1",
                     previewMapping:args.values.contains("--tv-mapping"),previewPairing:args.values.contains("--tv-pairing") || args.values.contains("--tv-recovery"))
-            }.background(DeckPaint.forest))
+            }.background { DeckGlassPanel(withinWindow:backdrop) })
         } else if args.values.contains("--source-setup") {
             view = AnyView(ScrollView {
                 SamsungSourceControls(sources: model.samsungSources, shortcuts: model.shortcuts, now: Date(), initialTestPort: .hdmi1)
                     .padding(16)
             }.foregroundStyle(DeckPaint.ink).tint(DeckPaint.accent).background(DeckPaint.ground))
-        } else { view = AnyView(BrightnessPopoverView(model: model, height: size.height,arrange:{})) }
-        let host = NSHostingView(rootView: view
+        } else { view = AnyView(BrightnessPopoverView(model: model, height: size.height, arrange:{}, materialWithinWindow:backdrop)) }
+        let stageSize = backdrop ? CGSize(width:size.width+160,height:size.height+100) : size
+        let scene = AnyView(ZStack {
+            if backdrop {
+                LinearGradient(colors:[Color(red:0.18,green:0.34,blue:0.43),Color(red:0.71,green:0.56,blue:0.44)],
+                               startPoint:.topLeading,endPoint:.bottomTrailing)
+                Circle().fill(Color(red:0.91,green:0.68,blue:0.42))
+                    .frame(width:380,height:380).offset(x:-180,y:-190)
+                RoundedRectangle(cornerRadius:30).fill(Color(red:0.30,green:0.44,blue:0.45))
+                    .frame(width:360,height:450).rotationEffect(.degrees(-24)).offset(x:180,y:130)
+            }
+            view
+                .frame(width:size.width,height:size.height)
+                .clipShape(RoundedRectangle(cornerRadius:backdrop ? 20 : 0))
+                .overlay {
+                    if backdrop { RoundedRectangle(cornerRadius:20).strokeBorder(.white.opacity(0.35),lineWidth:0.7) }
+                }
+                .shadow(color:.black.opacity(backdrop ? 0.2 : 0),radius:18,x:0,y:8)
+        }.frame(width:stageSize.width,height:stageSize.height))
+        let host = NSHostingView(rootView: scene
             .buttonStyle(.borderless)
             .environment(\.controlActiveState, .key)
-            .frame(width: size.width, height: size.height))
-        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: interactive ? [.titled, .closable] : .borderless, backing: .buffered, defer: false)
+            .environment(\.deckOpaquePreview,args.values.contains("--opaque"))
+            .frame(width: stageSize.width, height: stageSize.height))
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: stageSize), styleMask: interactive ? [.titled, .closable] : .borderless, backing: .buffered, defer: false)
         window.appearance = NSApp.appearance; window.contentView = host
-        window.setContentSize(size); host.layoutSubtreeIfNeeded(); window.displayIfNeeded()
+        window.setContentSize(stageSize); host.layoutSubtreeIfNeeded(); window.displayIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.12))
         host.layoutSubtreeIfNeeded()
         guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { throw CLIError.invalidValue("bitmap") }
@@ -135,7 +155,10 @@ import BrightnessHardware
             withExtendedLifetime(close) { NSApp.run() }
         }
         model.setVisible(false)
-        print("Rendered production view: \(path)")
+        print("Rendered offscreen layout fixture: \(path)")
+        if !args.values.contains("--opaque") {
+            print("System glass is composited by WindowServer. Use scripts/preview-deck.sh and a native window capture for visual proof.")
+        }
     }
 }
 #endif

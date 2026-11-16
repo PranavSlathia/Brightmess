@@ -16,7 +16,7 @@ public enum WindowPlacement {
     /// The read and write closures must be bound to the original AX element, never to current focus.
     public static func move(original: UInt32, destination: UInt32?, trusted: Bool,
                             usable: (UInt32) -> CGRect?, read: () -> Snapshot?,
-                            write: (CGRect) -> Bool) throws {
+                            write: (CGRect) throws -> Bool) throws {
         guard trusted else { throw TVError("Enable Accessibility to move windows.") }
         guard let destination, let target = usable(destination) else { throw TVError("Destination screen is no longer connected.") }
         guard let window = read() else { throw TVError("That window closed or is no longer available.") }
@@ -24,7 +24,7 @@ public enum WindowPlacement {
         guard window.screen == original else { throw TVError("Window moved since you opened Light desk. Choose it again.") }
         guard !window.fullScreen else { throw TVError("Exit full screen first, then move this window.") }
         guard window.movable else { throw TVError("This app does not allow moving this window.") }
-        guard write(fit(window.rect,from:window.usable,to:target)),
+        guard try write(fit(window.rect,from:window.usable,to:target)),
               read()?.screen == destination else { throw TVError("The app did not move the window to the requested screen.") }
     }
     /// All three rectangles are in global, top-left-origin accessibility points.
