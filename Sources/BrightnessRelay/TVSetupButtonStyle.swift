@@ -1,26 +1,28 @@
 import SwiftUI
 
-/// Popover-safe chrome. Automatic macOS button styles can choose a dark
-/// control-text colour even though this fixed forest band requires cream.
-struct TVSetupButtonStyle: ButtonStyle {
+/// Explicit adaptive ink and a dashed disabled outline keep small controls
+/// readable and distinguishable over both ends of the solar gradient.
+struct SolarUtilityButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     @Environment(\.isFocused) private var focused
 
     func makeBody(configuration: Configuration) -> some View {
-        let radius: CGFloat = 5
-        let fill = enabled ? (configuration.isPressed ? 0.20 : 0.10) : 0.035
+        let radius: CGFloat = 7
         configuration.label
             .font(.system(size:12,weight:.semibold))
-            .foregroundStyle(DeckPaint.cream.opacity(enabled ? 1 : 0.72))
+            .foregroundStyle(enabled ? DeckPaint.ink : DeckPaint.muted)
             .padding(.horizontal,9).padding(.vertical,5)
             .background {
-                RoundedRectangle(cornerRadius:radius).fill(DeckPaint.forest)
-                RoundedRectangle(cornerRadius:radius).fill(DeckPaint.cream.opacity(fill))
+                RoundedRectangle(cornerRadius:radius).fill(DeckPaint.button)
+                if enabled && configuration.isPressed {
+                    RoundedRectangle(cornerRadius:radius).fill(DeckPaint.ink.opacity(0.10))
+                }
             }
             .overlay {
                 RoundedRectangle(cornerRadius:radius).strokeBorder(
-                    focused && enabled ? DeckPaint.leaf : DeckPaint.cream.opacity(enabled ? 0.55 : 0.24),
-                    lineWidth: focused && enabled ? 2 : 1)
+                    focused && enabled ? DeckPaint.ink : DeckPaint.rule,
+                    style: StrokeStyle(lineWidth: focused && enabled ? 2 : 1,
+                                       dash: enabled ? [] : [3,2]))
             }
             .contentShape(RoundedRectangle(cornerRadius:radius))
     }

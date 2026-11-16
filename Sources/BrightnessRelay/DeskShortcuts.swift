@@ -4,23 +4,24 @@ import BrightnessCore
 
 /// Stable preference keys, independent of device order and keyboard layout.
 enum DeskAction: String, CaseIterable, Identifiable {
-    case bringHere, move, ps5, mac, home, samsungDP, samsungHDMI1, samsungHDMI2
+    case bringHere, move, arrange, ps5, mac, home, samsungDP, samsungHDMI1, samsungHDMI2
     var id: Self { self }
     var name: String {
         switch self { case .bringHere:return "Bring a window here";case .move: return "Move window"; case .ps5: return "PS5"
-        case .mac: return "Mac mini"; case .home: return "Smart TV"
+        case .mac: return "Mac mini"; case .home: return "Smart TV"; case .arrange:return "Arrange here"
         case .samsungDP: return "Samsung · DisplayPort"; case .samsungHDMI1: return "Samsung · HDMI 1"; case .samsungHDMI2: return "Samsung · HDMI 2" }
     }
     var symbol: String {
         switch self { case .bringHere:return "macwindow";case .move: return "rectangle.2.swap"; case .ps5: return "gamecontroller"
-        case .mac: return "desktopcomputer"; case .home: return "house"
+        case .mac: return "desktopcomputer"; case .home: return "house";case .arrange:return "rectangle.split.2x2"
         case .samsungDP: return "display"; case .samsungHDMI1, .samsungHDMI2: return "laptopcomputer" }
     }
     var suggested: DeskChord? {
         if self == .bringHere {return DeskChord(code:UInt32(kVK_Space),mods:UInt32(controlKey|optionKey),label:"⌃⌥Space")}
+        if self == .arrange {return .init(code:UInt32(kVK_Return),mods:UInt32(controlKey|optionKey),label:"⌃⌥Return")}
         let key: (Int,String)
         switch self { case .move: key = (kVK_ANSI_M,"M"); case .ps5: key = (kVK_ANSI_1,"1")
-        case .mac: key = (kVK_ANSI_2,"2"); case .bringHere, .home, .samsungDP, .samsungHDMI1, .samsungHDMI2: return nil }
+        case .mac: key = (kVK_ANSI_2,"2"); case .arrange, .bringHere, .home, .samsungDP, .samsungHDMI1, .samsungHDMI2: return nil }
         return DeskChord(code:UInt32(key.0),mods:UInt32(controlKey|optionKey|cmdKey),label:"⌃⌥⌘"+key.1)
     }
     var monitorPort: MonitorPort? {
@@ -31,7 +32,7 @@ enum DeskAction: String, CaseIterable, Identifiable {
         ("display","Monitor"),("gamecontroller","Controller"),("gamecontroller.fill","Solid controller"),
         ("play.circle","Play"),("desktopcomputer","Desktop"),("macmini","Mac mini"),("laptopcomputer","Laptop"),
         ("tv","Television"),("tv.fill","Solid television"),("house","Home"),("house.fill","Solid home"),
-        ("star","Star"),("bolt","Bolt")
+        ("star","Star"),("bolt","Bolt"),("rectangle.split.2x2","Arrange zones")
     ]
 }
 
@@ -175,7 +176,7 @@ struct DeskChord: Codable, Equatable {
             if e.keyCode == UInt16(kVK_Escape) { self.notice = "Recording cancelled."; return nil }
             let modifiers: [(NSEvent.ModifierFlags,Int,String)] = [(.control,controlKey,"⌃"),(.option,optionKey,"⌥"),(.shift,shiftKey,"⇧"),(.command,cmdKey,"⌘")]
             let used = modifiers.filter { e.modifierFlags.contains($0.0) }
-            let key = e.keyCode == UInt16(kVK_Space) ? "Space" : (e.charactersIgnoringModifiers?.uppercased() ?? "")
+            let key = e.keyCode == UInt16(kVK_Space) ? "Space" : e.keyCode == UInt16(kVK_Return) ? "Return" : (e.charactersIgnoringModifiers?.uppercased() ?? "")
             guard !key.isEmpty else { self.notice = "Choose a visible letter, digit or key."; return nil }
             self.bind(action,DeskChord(code:UInt32(e.keyCode),mods:used.reduce(0){$0|UInt32($1.1)},label:used.map(\.2).joined()+key))
             return nil
@@ -206,7 +207,9 @@ struct DeskChord: Codable, Equatable {
             chord.code == rejectedCode ? nil : OpaquePointer(bitPattern:Int(id))
         },release:{ _ in released += 1 })
         fake.perform = { actions.append($0) }; fake.tvNeeded = { wantsTV = $0 }
-        fake.restoreBindings(); fake.suggestions()
+        fake.restoreBindings()
+        try require(fake.binding(.arrange)==nil && fake.activeBinding(.arrange)==nil,"Arrange unexpectedly claimed a default shortcut.")
+        fake.suggestions()
         fake.offerBringHereDefault()
         try require(fake.binding(.bringHere)==DeskAction.bringHere.suggested,"Bring Here default missing")
         try require(fake.binding(.move) == legacy && fake.binding(.home) == nil && wantsTV,"Legacy move binding, click-only Home, or background demand lost.")
@@ -225,6 +228,8 @@ struct DeskChord: Codable, Equatable {
                     "The deck advertised a saved but unregistered shortcut.")
         fake.clear(.ps5); try require(wantsTV,"Disabling one binding closed the other TV session.")
         fake.clear(.mac); try require(!wantsTV,"TV kept running after last TV shortcut was cleared.")
+        let tv=PairedTV(service:"Fixture",display:"Screen",pin:Data())
+        try require(fake.activeBinding(.arrange) != nil && !wantsTV && tv.route(.arrange)==nil,"Arrange depended on a TV session or routed a TV command.")
         fake.clear(.move); try require(fixture(defaults:defaults).binding(.move) == nil,"Cleared legacy shortcut reappeared.")
         fake.clear(.bringHere);fake.offerBringHereDefault()
         try require(fake.binding(.bringHere)==nil,"Cleared picker shortcut reappeared")

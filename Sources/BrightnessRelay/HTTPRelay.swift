@@ -160,6 +160,7 @@ struct RelayClient {
 
 enum RelayControlAction: String, Sendable {
     case showMenu = "show-menu"
+    case arrangeHere = "arrange-here"
     case wakeAll = "wake-all"
     case syncNow = "sync-now"
     case setColor = "set-color"
@@ -199,6 +200,29 @@ final class RelayHTTPServer {
     private var lastSolarAt: Double?
     private var sessionID: UUID?
     private var acceptedSamples = 0
+    private var applicationRequests:UInt64=0,applicationResponses:UInt64=0
+    private let startedAt=ProcessInfo.processInfo.systemUptime
+
+    // One on-demand snapshot; never performs I/O or calls the UI from the relay queue.
+    func setupSnapshot(_ completion:@escaping @Sendable ([String:Any])->Void) {
+        queue.async { [self] in
+            let writes=displayCoordinator.writeCounts
+            completion([
+                "sourceState":presence.label(now:Date().timeIntervalSince1970,solar:solarActive),
+                "sourceMode":presence.mode?.rawValue ?? "unknown",
+                "airReadingAgeSeconds":lastRemoteUpdateAt.map{max(0,Date().timeIntervalSince($0))} as Any? ?? NSNull(),
+                "uptimeSeconds":ProcessInfo.processInfo.systemUptime-startedAt,
+                "hardwareWritesSinceStart":writes.hardware,"softwareWritesSinceStart":writes.software,
+                "hardwareReadAttemptsSinceStart":displayCoordinator.readAttempts,"acceptedSamplesSinceStart":acceptedSamples,
+                "applicationRequestsSinceStart":applicationRequests,"applicationResponsesSinceStart":applicationResponses,
+                "displays":displayCoordinator.snapshot().map { state -> [String:Any] in
+                    ["connected":state.connectionState.isConnected,"method":state.controlMethod.rawValue,
+                     "readingKind":state.readingKind(at:Date()).rawValue,
+                     "hardwareReadingAgeSeconds":state.lastReadAt.map{max(0,Date().timeIntervalSince($0))} as Any? ?? NSNull()]
+                }
+            ])
+        }
+    }
     private var onPresence: ((SourcePresence, Bool) -> Void)?
     func setOnPresence(_ handler: @escaping (SourcePresence, Bool) -> Void) { onPresence = handler }
 
@@ -391,6 +415,7 @@ final class RelayHTTPServer {
                   "/v1/ambient",
                   "/v1/pull/await",
                   "/v1/control/show-menu",
+                  "/v1/control/arrange-here",
                   "/v1/control/wake-all",
                   "/v1/control/sync-now",
                   "/v1/control/status",
@@ -430,6 +455,7 @@ final class RelayHTTPServer {
     }
 
     private func handle(_ request: Request, on connection: NWConnection) {
+        if applicationRequests < .max {applicationRequests+=1}
         guard authenticator.verify(signature: request.signature, body: request.body) else {
             respond(to: connection, status: 401, message: "invalid signature")
             return
@@ -467,6 +493,8 @@ final class RelayHTTPServer {
             handlePullWait(request, on: connection)
         case "/v1/control/show-menu":
             handleControl(.showMenu, request: request, on: connection)
+        case "/v1/control/arrange-here":
+            handleControl(.arrangeHere, request: request, on: connection)
         case "/v1/control/wake-all":
             handleControl(.wakeAll, request: request, on: connection)
         case "/v1/control/sync-now":
@@ -497,6 +525,8 @@ final class RelayHTTPServer {
                 }
                 let writes = displayCoordinator.writeCounts
                 var status: [String: Any] = [
+                    "uptimeSeconds":ProcessInfo.processInfo.systemUptime-startedAt,
+                    "applicationRequestsSinceStart":applicationRequests,"applicationResponsesSinceStart":applicationResponses,
                     "hardwareWritesSinceStart": writes.hardware, "softwareWritesSinceStart": writes.software,
                     "hardwareReadAttemptsSinceStart": displayCoordinator.readAttempts,
                     "version": "0.8.0", "displays": displays,
@@ -674,6 +704,7 @@ final class RelayHTTPServer {
     }
 
     private func respond(to connection: NWConnection, status: Int, message: String) {
+        if applicationResponses < .max {applicationResponses+=1}
         let reason: String
         switch status {
         case 200: reason = "OK"

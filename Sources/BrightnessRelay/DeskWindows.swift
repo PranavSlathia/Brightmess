@@ -12,6 +12,7 @@ import BrightnessCore
     @Published private(set) var sourceNames=""
     @Published private(set) var hint=""
     private(set) var successfulMoves=0
+    var didMove:((DeskWindow)->Void)?
     private var port:any WindowDeskPort
     private var destination:UInt32?, ticket=UUID(), job:Task<Void,Never>?
     private var lastExternal:NSRunningApplication?, observer:NSObjectProtocol?
@@ -66,7 +67,7 @@ import BrightnessCore
     }
     private func move(_ w:DeskWindow,to id:UInt32) {
         do {
-            try port.move(w,to:id);successfulMoves+=1
+            try port.move(w,to:id);successfulMoves+=1;didMove?(w)
             notice="Moved "+w.app+" to "+(port.screens.first{$0.id==id}?.name ?? "the destination")+"."
             if focus?.id==w.id || focus.map({$0.owner==w.owner && CFEqual($0.element,w.element)}) == true {focus=nil}
         } catch { notice=error.localizedDescription }

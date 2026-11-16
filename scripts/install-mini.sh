@@ -18,24 +18,33 @@ if (( $# )); then
   STAGE_ONLY=1
 fi
 cd "$ROOT"
+BUILD_ROOT="${BR_BUILD_PATH:-$ROOT/.build}"
+validate_predecessor() {
+  if [[ -n "${BR_EXPECTED_APP_SHA256:-}" ]]; then
+    [[ -f "$OLD/Contents/MacOS/brightness-relay" ]] || { print -u2 'Expected installed app is missing; update stopped.'; exit 1; }
+    actual="$(shasum -a 256 "$OLD/Contents/MacOS/brightness-relay" | cut -d ' ' -f 1)"
+    [[ "$actual" == "$BR_EXPECTED_APP_SHA256" ]] || { print -u2 'Installed app changed during preparation; update stopped without replacing it.'; exit 1; }
+  fi
+}
+validate_predecessor
 if [[ "${BR_SKIP_BUILD:-0}" != 1 ]]; then
-  "$ROOT/scripts/swiftpm.sh" build -c release
+  "$ROOT/scripts/swiftpm.sh" build -c release --scratch-path "$BUILD_ROOT"
 fi
 if (( STAGE_ONLY )); then
-  STAGE="$(mktemp -d "$ROOT/.build/mini-preview.XXXXXX")"
+  STAGE="$(mktemp -d "$BUILD_ROOT/mini-preview.XXXXXX")"
 else
   mkdir -p "$HOME/Applications" "$HOME/.local/bin" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
   STAGE="$(mktemp -d "$HOME/Applications/.brightness-update.XXXXXX")"
 fi
 STAGED_APP="$STAGE/BRIGHTMESS.app"
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
-install -m 755 .build/release/brightness-relay "$STAGED_APP/Contents/MacOS/brightness-relay"
+install -m 755 "$BUILD_ROOT/release/brightness-relay" "$STAGED_APP/Contents/MacOS/brightness-relay"
 for asset in BRIGHTMESS.icns Assets.car; do
   install -m 644 "Assets/Brand/Compiled/$asset" "$STAGED_APP/Contents/Resources/$asset"
 done
 install -m 644 NOTICE "$STAGED_APP/Contents/Resources/THIRD-PARTY-NOTICES.txt"
-install -m 644 .build/checkouts/SunKit/LICENSE "$STAGED_APP/Contents/Resources/SunKit-LICENSE.txt"
-install -m 644 .build/checkouts/swift-atomics/LICENSE.txt "$STAGED_APP/Contents/Resources/Swift-Atomics-LICENSE.txt"
+install -m 644 "$BUILD_ROOT/checkouts/SunKit/LICENSE" "$STAGED_APP/Contents/Resources/SunKit-LICENSE.txt"
+install -m 644 "$BUILD_ROOT/checkouts/swift-atomics/LICENSE.txt" "$STAGED_APP/Contents/Resources/Swift-Atomics-LICENSE.txt"
 INFO="$STAGED_APP/Contents/Info.plist"
 plutil -create xml1 "$INFO"
 plutil -insert CFBundleExecutable -string brightness-relay "$INFO"
@@ -45,8 +54,8 @@ plutil -insert CFBundleDisplayName -string "BRIGHTMESS" "$INFO"
 plutil -insert CFBundlePackageType -string APPL "$INFO"
 plutil -insert CFBundleIconFile -string BRIGHTMESS "$INFO"
 plutil -insert CFBundleIconName -string BRIGHTMESS "$INFO"
-VERSION=0.12.3
-BUILD=26
+VERSION=0.14.1
+BUILD=33
 plutil -insert CFBundleShortVersionString -string "$VERSION" "$INFO"
 plutil -insert CFBundleVersion -string "$BUILD" "$INFO"
 plutil -insert NSLocalNetworkUsageDescription -string "Find your selected Android TV and send input commands on your local network." "$INFO"
@@ -54,6 +63,7 @@ plutil -insert NSBonjourServices -json '["_androidtvremote2._tcp"]' "$INFO"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$INFO"
 plutil -insert LSUIElement -bool true "$INFO"
 plutil -insert NSHighResolutionCapable -bool true "$INFO"
+"/usr/bin/swift" "$ROOT/scripts/package-app-intents.swift" "$BUILD_ROOT" "$STAGED_APP"
 # Keep a stable identity across updates. Never auto-pick from find-identity:
 # its list can include a revoked certificate. Never silently fall back to ad hoc.
 SIGNING_IDENTITY="${BR_SIGNING_IDENTITY:-}"
@@ -91,7 +101,7 @@ fi
 mkdir -p "$SUPPORT"
 BACKUP="$(mktemp -d "$SUPPORT/$(date +%Y%m%d-%H%M%S).XXXXXX")"
 [[ ! -f "$HOME/.local/bin/brightness-relay" ]] || cp -p "$HOME/.local/bin/brightness-relay" "$BACKUP/cli"
-[[ -f "$TOKEN" ]] || .build/release/brightness-relay token create
+[[ -f "$TOKEN" ]] || "$BUILD_ROOT/release/brightness-relay" token create
 
 mkdir -p "$BACKUP"
 install -m 755 "$ROOT/scripts/rollback-mini.sh" "$BACKUP/Rollback Mini.command"
@@ -116,6 +126,7 @@ if [[ -f "$PLIST" ]]; then
   done
   (( found )) || { print -u2 'Unrecognized receiver arguments; installed app not touched.'; exit 1; }
 fi
+validate_predecessor
 launchctl bootout "gui/$(id -u)/dev.pranav.brightness-relay.receiver" >/dev/null 2>&1 || true
 pkill -TERM -f "^$OLD/Contents/MacOS/brightness-relay menu" >/dev/null 2>&1 || true
 for attempt in {1..30}; do
@@ -134,7 +145,7 @@ restore_on_failure() {
 }
 trap 'restore_on_failure' ZERR
 mv "$STAGED_APP" "$APP"
-install -m 755 .build/release/brightness-relay "$HOME/.local/bin/brightness-relay"
+install -m 755 "$BUILD_ROOT/release/brightness-relay" "$HOME/.local/bin/brightness-relay"
 [[ ! -f "$STAGE/receiver.plist" ]] || mv "$STAGE/receiver.plist" "$PLIST"
 rmdir "$STAGE"
 

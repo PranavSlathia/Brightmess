@@ -37,6 +37,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     private var terminationSignal: DispatchSourceSignal?
     private var markMode:DeskMark.Mode = .linked
     private let markCue=DeskMarkCue()
+    private let arrangement=ArrangePanelController()
+    private let setupReport=SetupReportPanel()
 
     init(server: RelayHTTPServer) {
         self.server = server
@@ -58,10 +60,31 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
             if let url=URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {NSWorkspace.shared.open(url)}
         }
         model.openWindowPicker = {[weak self] in self?.openWindowPicker()}
+        model.windows.didMove = {[weak self] window in self?.bringHere.model.recordMoved(window)}
+        model.openSetupReport = {[weak self] in self?.popover.performClose(nil);self?.setupReport.open()}
+        setupReport.model.refresh = {[weak self] in self?.refreshSetupReport()}
+        setupReport.model.recover = {[weak self] action in self?.recoverSetup(action)}
+        DeskIntentCoordinator.shared.open = { [weak self] destination,arrange in
+            guard let self else{throw TVError("BRIGHTMESS is not ready.")}
+            guard !self.arrangement.model.working,!self.bringHere.model.working else{throw TVError("A window operation is already running. Try again when it finishes.")}
+            guard AXIsProcessTrusted() else{throw TVError("Enable BRIGHTMESS in Accessibility before using window actions.")}
+            guard NSScreen.screens.contains(where:{($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value==destination}) else{throw TVError("Destination disconnected. No windows moved.")}
+            self.popover.performClose(nil)
+            self.bringHere.dismiss(restoring:false);self.arrangement.model.close()
+            if arrange {try self.arrangement.open(destination:destination)} else {self.bringHere.open(destination:destination)}
+        }
+        DeskIntentCoordinator.shared.selectSource = {[weak self] action in
+            guard let self else{throw TVError("BRIGHTMESS is not ready.")}
+            try await self.model.tv.activateFromShortcut(action)
+        }
         model.shortcuts.perform = { [weak self] action in
             guard let self else { return }
             if action == .bringHere {self.openWindowPicker()}
-            else if action == .move { self.model.windows.toggle(captured:self.popover.isShown) }
+            else if action == .move {
+                guard !self.bringHere.model.working,!self.arrangement.model.working else{NSSound.beep();return}
+                self.model.windows.toggle(captured:self.popover.isShown)
+            }
+            else if action == .arrange {self.openArrangement()}
             else if let port = action.monitorPort {
                 let ready = self.model.samsungSources.canActivate(port)
                 self.model.samsungSources.activate(port)
@@ -78,6 +101,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
                 result["panelVisible"] = self.popover.isShown
                 result["tvPaired"] = self.model.tv.paired != nil
                 result["tvRemoteReady"] = self.model.tv.ready
+                result["tvMessagesSentSinceStart"] = self.model.tv.messagesSent
                 result["tvNotice"] = self.model.tv.notice
                 result["tvConnectionError"] = self.model.tv.lastConnectionError ?? NSNull() as Any
                 if let tv = self.model.tv.paired {
@@ -87,6 +111,10 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
                 result["deskActions"] = self.model.shortcuts.diagnostics
                 result["windowMoves"] = self.model.windows.successfulMoves
                 result["bringHere"] = self.bringHere.model.diagnostics
+                result["arrangeHere"] = ["visible":self.arrangement.model.stage != .closed,
+                    "working":self.arrangement.model.working,"windowCount":self.arrangement.model.windows.count,
+                    "selectedCount":self.arrangement.model.selected.count,"canUndo":self.arrangement.model.hasSavedUndo,
+                    "canUndoNow":self.arrangement.model.canUndo]
                 result["windowAccessibility"] = AXIsProcessTrusted()
                 result["tvLastSent"] = self.model.tv.lastSent ?? NSNull() as Any
                 result["samsungSources"] = self.model.samsungSources.diagnostics
@@ -114,6 +142,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
                 switch action {
                 case .showMenu:
                     self.openPopover()
+                case .arrangeHere:
+                    self.openArrangement()
                 case .wakeAll:
                     self.model.wakeAll()
                 case .syncNow:
@@ -164,6 +194,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         installObservers()
         model.windows.observeFocus()
         model.shortcuts.start()
+        BrightmessAppShortcuts.updateAppShortcutParameters()
         keyController.start()
         signal(SIGTERM, SIG_IGN)
         let term = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
@@ -202,7 +233,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         let panelHeight = DeskLayout.height(for: NSScreen.main?.visibleFrame.height)
         popover.contentSize = NSSize(width: DeskLayout.width, height: panelHeight)
         popover.contentViewController = NSHostingController(
-            rootView: BrightnessPopoverView(model: model, height: panelHeight)
+            rootView: BrightnessPopoverView(model: model, height: panelHeight,arrange:{[weak self] in self?.openArrangement()})
         )
         RelayLog.write("Menu bar status item installed")
     }
@@ -279,6 +310,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         model.setVisible(false); model.shortcuts.cancelRecording(); model.windows.close(); model.tv.close()
     }
     private func openPopover(clickedScreen:NSScreen?=nil) {
+        guard !arrangement.model.working else{NSSound.beep();return}
+        arrangement.model.close()
         if bringHere.model.visible {bringHere.dismiss(restoring:false)}
         guard let button = statusItem.button else { return }
         guard !popover.isShown else { return }
@@ -287,7 +320,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         let height=DeskLayout.height(for:destination?.visibleFrame.height)
         if popover.contentSize.height != height {
             popover.contentSize=NSSize(width:DeskLayout.width,height:height)
-            popover.contentViewController=NSHostingController(rootView:BrightnessPopoverView(model:model,height:height))
+            popover.contentViewController=NSHostingController(rootView:BrightnessPopoverView(model:model,height:height,arrange:{[weak self] in self?.openArrangement()}))
         }
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         model.tv.open()
@@ -303,9 +336,48 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
         RelayLog.write("Brightness controller popover opened")
     }
 
+    private func openArrangement() {
+        guard !bringHere.model.working else{NSSound.beep();return}
+        popover.performClose(nil)
+        bringHere.dismiss(restoring:false)
+        arrangement.toggle()
+    }
     private func openWindowPicker(){
+        guard !arrangement.model.working else{NSSound.beep();return}
+        arrangement.model.close()
         if popover.isShown {popover.performClose(nil)}
         bringHere.toggle()
+    }
+
+    private func refreshSetupReport() {
+        server.setupSnapshot { [weak self] snapshot in
+            DispatchQueue.main.async {
+                guard let self else{return}
+                var raw=snapshot
+                raw["appVersion"]=Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString")
+                raw["build"]=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion")
+                raw["tvPaired"]=self.model.tv.paired != nil;raw["tvRemoteReady"]=self.model.tv.ready
+                raw["tvIdentityOpening"]=self.model.tv.identityOpening;raw["windowAccessibility"]=AXIsProcessTrusted()
+                raw["tvFailureCode"]=self.model.tv.failureCode.rawValue
+                raw["tvMessagesSentSinceStart"]=self.model.tv.messagesSent
+                if let tv=self.model.tv.paired {
+                    raw["ps5Port"]=tv.hdmi(.ps5);raw["macPort"]=tv.hdmi(.mac)
+                    raw["ps5PortChooser"]=tv.ps5Picker;raw["macPortChooser"]=tv.miniPicker
+                }
+                self.setupReport.model.report=SetupReport.make(raw)
+            }
+        }
+    }
+    private func recoverSetup(_ action:SetupReport.Recovery) {
+        switch action {
+        case .accessibility:bringHere.requestAccess?()
+        case .sync:model.requestAirSync()
+        case .tvReconnect:openPopover();model.tv.reconnect()
+        case .tvSetup,.inputs:
+            openPopover()
+            if action == .inputs {model.tv.requestedMapping=UUID()} else {model.tv.requestedSetup=UUID()}
+        case .displays:model.toolsOpen=true;openPopover()
+        }
     }
 
     private func show(_ status: AppliedBrightnessStatus) {
@@ -325,6 +397,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        arrangement.stop()
         markCue.reset()
         bringHere.stop()
         model.shortcuts.stop(); model.windows.stop(); model.tv.shutdown()
@@ -343,6 +416,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, NSPopoverDelegat
 @MainActor
 final class BrightnessMenuModel: ObservableObject {
     var openWindowPicker:(()->Void)?
+    var openSetupReport:(()->Void)?
     let windows = DeskWindows()
     let tv: TVRemote
     let shortcuts: DeskShortcuts

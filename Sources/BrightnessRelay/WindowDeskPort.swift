@@ -8,6 +8,12 @@ struct DeskWindow: Identifiable {
     var original: CGDirectDisplayID
     var nativeWindowID:UInt32?
     var shelfTicket: UUID?
+    var bundleID:String?
+    var processStartedAt:Date?
+    var recentIdentity:RecentWindowIdentity? {
+        guard let nativeWindowID,let processStartedAt else{return nil}
+        return .init(process:owner,startedAt:processStartedAt.timeIntervalSince1970,window:nativeWindowID)
+    }
     var retrievalState: WindowRetrievalState = .normal
     var displayTitle: String { title.isEmpty ? "Untitled window" : title }
 }
@@ -110,7 +116,9 @@ enum AXDesk {
         guard trusted,let app,!app.isTerminated,app.processIdentifier != getpid() else{return nil}
         let ax=AXUIElementCreateApplication(app.processIdentifier);AXUIElementSetMessagingTimeout(ax,0.25)
         guard let w=AXDesk.value(ax,kAXFocusedWindowAttribute),CFGetTypeID(w)==AXUIElementGetTypeID() else{return nil}
-        return AXDesk.entry(w as! AXUIElement,pid:app.processIdentifier,name:app.localizedName ?? "Application",screens:screens,readTitle:false)
+        var entry=AXDesk.entry(w as! AXUIElement,pid:app.processIdentifier,name:app.localizedName ?? "Application",screens:screens,readTitle:false)
+        entry?.bundleID=app.bundleIdentifier;entry?.processStartedAt=app.launchDate
+        return entry
     }
     func inventory(excluding destination:UInt32,screens:[ShelfScreen]) async -> [DeskWindow] {
         await inventory(excluding:destination,screens:screens,retrieval:false)
@@ -128,6 +136,10 @@ enum AXDesk {
         let apps=NSWorkspace.shared.runningApplications.filter{$0.activationPolicy == .regular && $0.processIdentifier != getpid() && !$0.isTerminated}
             .filter{onlyOwner == nil || $0.processIdentifier==onlyOwner}
             .map{($0.processIdentifier,$0.localizedName ?? "Application")}
+        let metadata=Dictionary(uniqueKeysWithValues:apps.map { pid,_ in
+            let app=NSRunningApplication(processIdentifier:pid)
+            return (pid,(app?.bundleIdentifier,app?.launchDate))
+        })
         let job=Task.detached(priority:.userInitiated) { () -> [DeskWindow] in
             let deadline=ProcessInfo.processInfo.systemUptime+1.5
             for attempt in 0..<16 {
@@ -138,8 +150,10 @@ enum AXDesk {
                     let ax=AXUIElementCreateApplication(pid);AXUIElementSetMessagingTimeout(ax,0.25)
                     for el in AXDesk.value(ax,kAXWindowsAttribute) as? [AXUIElement] ?? [] {
                         guard !Task.isCancelled else{return []}
-                        if let w=AXDesk.entry(el,pid:pid,name:name,screens:screens,excluding:destination,retrieval:retrieval,
-                            records:geometry,geometryUnavailable:{pendingGeometry=true}) {out.append(w)}
+                        if var w=AXDesk.entry(el,pid:pid,name:name,screens:screens,excluding:destination,retrieval:retrieval,
+                            records:geometry,geometryUnavailable:{pendingGeometry=true}) {
+                            w.bundleID=metadata[pid]?.0;w.processStartedAt=metadata[pid]?.1;out.append(w)
+                        }
                     }
                 }
                 // Opening again immediately after a move may overlap the
@@ -155,6 +169,7 @@ enum AXDesk {
         return await withTaskCancellationHandler(operation:{await job.value},onCancel:{job.cancel()})
     }
     func move(_ w:DeskWindow,to id:UInt32)throws {
+        let assistive=NSWorkspace.shared.isVoiceOverEnabled || NSWorkspace.shared.isSwitchControlEnabled
         try WindowPlacement.move(original:w.original,destination:id,trusted:trusted,
             usable:{ id in self.screens.first{$0.id==id}?.usable },read:{
                 var pid:pid_t=0
@@ -164,12 +179,9 @@ enum AXDesk {
                 return .init(screen:s.id,rect:rect,usable:s.usable,fullScreen:AXDesk.value(w.element,"AXFullScreen") as? Bool == true,
                              movable:AXDesk.settable(w.element,kAXPositionAttribute))
             },write:{ target in
-                var origin=target.origin,size=target.size
-                let resize=AXDesk.settable(w.element,kAXSizeAttribute) && AXDesk.frame(w.element)?.size != size
-                func fit(){if resize,let v=AXValueCreate(.cgSize,&size){_ = AXUIElementSetAttributeValue(w.element,kAXSizeAttribute as CFString,v)}}
-                fit()
-                guard let v=AXValueCreate(.cgPoint,&origin),AXUIElementSetAttributeValue(w.element,kAXPositionAttribute as CFString,v) == .success else{return false}
-                fit();return true
+                try NativeWindowFrameWriter.write(target,to:w.element,owner:w.owner,windowID:w.nativeWindowID,
+                    assistiveTechnologyActive:assistive)
+                return true
             })
         NSRunningApplication(processIdentifier:w.owner)?.activate(options:[])
         AXUIElementPerformAction(w.element,kAXRaiseAction as CFString)
@@ -177,6 +189,7 @@ enum AXDesk {
     func retrieve(_ window:DeskWindow,to destination:UInt32,progress:@escaping @MainActor (String)->Void) async throws {
         guard !retrieving else {throw TVError("A window move is still finishing. Try again shortly.")}
         retrieving=true;defer{retrieving=false}
+        let assistive=NSWorkspace.shared.isVoiceOverEnabled || NSWorkspace.shared.isSwitchControlEnabled
         let task=Task.detached(priority:.userInitiated) { [self] in
             func snapshot() async throws -> WindowRetrieval.Snapshot {
                 try Task.checkCancellation()
@@ -217,20 +230,8 @@ enum AXDesk {
                     throw TVError("This app refused to leave full screen. Exit full screen manually and try again.")
                 }
             },write:{frame in
-                try Task.checkCancellation()
-                var size=frame.size,origin=frame.origin
-                if AXDesk.settable(window.element,kAXSizeAttribute),let value=AXValueCreate(.cgSize,&size) {
-                    _ = AXUIElementSetAttributeValue(window.element,kAXSizeAttribute as CFString,value)
-                }
-                try Task.checkCancellation()
-                guard let value=AXValueCreate(.cgPoint,&origin),
-                      AXUIElementSetAttributeValue(window.element,kAXPositionAttribute as CFString,value) == .success else {
-                    throw TVError("The app refused the window move. Check its current position.")
-                }
-                try Task.checkCancellation()
-                if AXDesk.settable(window.element,kAXSizeAttribute),let value=AXValueCreate(.cgSize,&size) {
-                    _ = AXUIElementSetAttributeValue(window.element,kAXSizeAttribute as CFString,value)
-                }
+                try NativeWindowFrameWriter.write(frame,to:window.element,owner:window.owner,windowID:window.nativeWindowID,
+                    assistiveTechnologyActive:assistive)
             },progress:{text in await progress(text)})
         }
         try await withTaskCancellationHandler(operation:{try await task.value},onCancel:{task.cancel()})

@@ -33,6 +33,7 @@ enum RuntimeChecks {
     }
 
     @MainActor static func run() async throws {
+        try await ArrangeChecks.run()
         try WindowGeometryChecks.run()
         try TVIdentityChecks.run()
         try TVMappingChecks.run()
@@ -45,6 +46,7 @@ enum RuntimeChecks {
         try DisplayRecoveryChecks.run()
         try await DeskShelfChecks.run()
         try await BringHereChecks.run()
+        try await WorkflowChecks.run()
         func expect(_ test: @autoclosure () -> Bool, _ message: String) throws {
             if !test() { throw Failed.check(message) }
         }
@@ -79,6 +81,11 @@ enum RuntimeChecks {
         try await server.start()
         guard let port = server.boundPort else { throw Failed.check("listener") }
         let client = try RelayClient(host: "127.0.0.1", port: port, authenticator: auth)
+        var requestedArrangement=false
+        server.setOnControl{action,_ in if action == .arrangeHere{requestedArrangement=true}}
+        try await client.sendControl(.arrangeHere)
+        try await wait({requestedArrangement},"Authenticated Arrange preview command was not delivered")
+        server.setOnControl{_,_ in}
         try await client.send(brightness: 0.4, source: "old Air")
         func status() async throws -> [String:Any] {
             try JSONSerialization.jsonObject(with: Data((try await client.status()).utf8)) as? [String:Any] ?? [:]

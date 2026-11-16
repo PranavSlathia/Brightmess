@@ -50,6 +50,7 @@ struct SamsungSourceControls: View {
                     Spacer(minLength: 4)
                     if let key = shortcuts.activeBinding(action(port)) { Text(key.label).font(.caption) }
                     Button("Switch") { sources.activate(port) }.disabled(!sources.canActivate(port))
+                        .buttonStyle(SolarUtilityButtonStyle())
                         .accessibilityLabel("Switch Samsung to " + sources.route(port).name + " on " + port.title)
                     Menu {
                         Button("Name and mapping…") { beginEditing(port) }
@@ -97,6 +98,7 @@ struct SamsungSourceControls: View {
                     HStack {
                         Button("Test and return") { sources.test(testPort, sourceConnected: form.sourceConnected, recoveryReady: form.recoveryReady) }
                             .disabled(!form.sourceConnected || !form.recoveryReady || sources.busy || !qualified(.displayPort))
+                            .buttonStyle(SolarUtilityButtonStyle())
                         Button("Close test setup") { form.testPort = nil }.disabled(sources.busy)
                     }
                 }.font(.caption)

@@ -12,6 +12,7 @@ codesign --force --sign - --identifier dev.pranav.BrightnessRelay.Source "$BUNDL
 codesign --verify --strict "$BUNDLE/brightness-relay"
 install -m 755 scripts/restore-air-relay.sh "$BUNDLE/Install on Air.command"
 install -m 755 scripts/rollback-air.sh scripts/measure-relay.sh "$BUNDLE/"
+install -m 644 scripts/measure-performance.swift "$BUNDLE/"
 install -m 600 "$HOME/.config/brightness-relay/token" "$BUNDLE/token"
 install -m 644 NOTICE "$BUNDLE/THIRD-PARTY-NOTICES.txt"
 install -m 644 .build/checkouts/SunKit/LICENSE "$BUNDLE/SunKit-LICENSE.txt"

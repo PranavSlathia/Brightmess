@@ -105,7 +105,7 @@ final class LiveAirSource {
 
     private func sample(force: Bool, readAmbient: Bool) {
         let v = snapshot(readAmbient: readAmbient)
-        if !force, let last, v.time - last.time < 60, !v.differs(from: last) { return }
+        guard LivePublicationPolicy.shouldPublish(force:force,changed:last.map{v.differs(from:$0)} ?? true,last:last?.time,now:v.time) else{return}
         last = v; mailbox.offer(v); drain()
     }
 

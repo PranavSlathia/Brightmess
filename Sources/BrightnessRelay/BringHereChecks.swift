@@ -12,7 +12,9 @@ import BrightnessCore
     init(){
         base.entries=[]
         for (app,title,screen) in [("Zen","Project notes",base.tv),("Arc","Research",base.tv),("Arc","Reading",base.tv),("Safari","Reading list",base.tv),("Preview","Contact sheet",base.samsung)] {
-            base.entries.append(.init(app:app,title:title,owner:0,element:AXUIElementCreateSystemWide(),original:screen))
+            var window=DeskWindow(app:app,title:title,owner:0,element:AXUIElementCreateSystemWide(),original:screen)
+            window.bundleID=app=="Zen" ? "app.zen-browser.zen":"fixture."+app
+            base.entries.append(window)
         }
     }
     func current(previous:NSRunningApplication?)->DeskWindow? {base.current(previous:previous)}
@@ -31,20 +33,41 @@ import BrightnessCore
 }
 
 @MainActor enum BringHereChecks {
+    static func preferences()->PickerPreferences {
+        let name="dev.pranav.picker.fixture."+UUID().uuidString
+        let defaults=UserDefaults(suiteName:name)!
+        // Fixture store never reads or changes the user's pins.
+        let prefs=PickerPreferences(defaults:defaults)
+        defaults.removePersistentDomain(forName:name)
+        return prefs
+    }
     static func run() async throws {
         func check(_ value:Bool,_ message:String)throws{if !value {throw TVError("Picker check: "+message)}}
-        let port=PickerFixture(),model=BringHereModel(port:port)
+        let suite="dev.pranav.picker-check."+UUID().uuidString
+        let defaults=UserDefaults(suiteName:suite)!
+        defer {defaults.removePersistentDomain(forName:suite)}
+        let saved=PickerPreferences(defaults:defaults)
+        try check(saved.pins.map(\.name)==["Aside","Codex","Terminal","Zen","Finder"],"default pin order")
+        saved.remove("com.openai.codex")
+        let reopened=PickerPreferences(defaults:defaults)
+        try check(!reopened.pins.contains{$0.name=="Codex"},"removed pin reseeded")
+        reopened.move("com.apple.finder",by:-1)
+        try check(reopened.pins[2].name=="Finder","accessible reorder")
+        for pin in reopened.pins {reopened.remove(pin.id)}
+        try check(PickerPreferences(defaults:defaults).pins.isEmpty,"empty pins reseeded")
+        let port=PickerFixture(),model=BringHereModel(port:port,preferences:preferences())
         model.open(destination:port.base.samsung);await model.finish()
         try check(model.rows.map(\.key)==["Z","A","S"],"initials")
         model.key("tab");try check(model.selected==1,"Tab and arrow selection must agree")
         model.key("backtab");try check(model.selected==0,"Shift-Tab selection")
         model.key("a");try check(model.rows.map(\.key)==["1","2"],"numbered choices")
         let exact=model.rows[1].windows[0].id
+        let movedTitle=model.rows[1].windows[0].title
         model.key("2");await model.finish()
         try check(port.writes==[exact] && !model.visible,"exact window and successful dismissal")
         model.open(destination:port.base.tv);await model.finish()
         try check(model.rows.contains{$0.app=="Arc"},"reverse")
-        model.key("/");model.search("Reading");model.key("z")
+        model.key("/");model.search(movedTitle);model.key("z")
         try check(port.writes.count==1 && model.rows.count==1,"search never runs initials")
         model.key("escape");try check(model.stage == .apps,"search cancellation")
         model.close();port.base.delay=true;model.open(destination:port.base.samsung)
@@ -73,7 +96,7 @@ import BrightnessCore
         let folder=URL(fileURLWithPath:path);try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
         for dark in [false,true] {
             for state in ["apps","multiple","search","empty","permission","blocked","working","reverse","many"] {
-                let port=PickerFixture(),model=BringHereModel(port:port),view=BringHerePanel(model:model)
+                let port=PickerFixture(),model=BringHereModel(port:port,preferences:preferences()),view=BringHerePanel(model:model)
                 view.fixtureAppearance=dark
                 if state=="permission" {port.trusted=false}
                 if state=="blocked" {port.base.entries[0].retrievalState = .blocked("Exit Split View first")}

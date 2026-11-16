@@ -61,8 +61,35 @@ struct CLIArguments {
 struct BrightnessRelayCLI {
     @MainActor
     static func main() {
-        let arguments = CLIArguments(values: CommandLine.arguments)
+        var arguments = CLIArguments(values: CommandLine.arguments)
+        // LaunchServices/App Intents launch bundles without CLI arguments. Only
+        // that case adopts the existing receiver's arguments; bare CLI stays CLI.
+        if arguments.command == nil,Bundle.main.bundleIdentifier == "dev.pranav.BrightnessRelay" {
+            do {arguments=try bundleLaunchArguments()} catch {fail(error)}
+        }
         #if DEBUG
+        if arguments.command == "workflow-preview" {
+            _ = NSApplication.shared
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            do {
+                guard let path=arguments.positional(at:0) else{throw CLIError.missingValue("output folder")}
+                try WorkflowChecks.render(URL(fileURLWithPath:path));Foundation.exit(0)
+            } catch {fail(error)}
+        }
+        if Bundle.main.bundleIdentifier == "dev.pranav.brightmess.arrange-fixture" {
+            ArrangeInteractiveFixture.run();return
+        }
+        if arguments.command == "arrange-preview" {
+            _ = NSApplication.shared
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            Task {
+                do {
+                    guard let path=arguments.positional(at:0) else{throw CLIError.missingValue("output folder")}
+                    try await ArrangeChecks.render(folder:URL(fileURLWithPath:path));Foundation.exit(0)
+                } catch {fail(error)}
+            }
+            NSApplication.shared.run();return
+        }
         if arguments.command == "picker-preview" {
             _ = NSApplication.shared
             Task {do {try await BringHereChecks.render(arguments);Foundation.exit(0)}catch{fail(error)}}
@@ -102,11 +129,24 @@ struct BrightnessRelayCLI {
         Foundation.exit(1)
     }
 
+    private static func bundleLaunchArguments() throws -> CLIArguments {
+        let url=FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/dev.pranav.brightness-relay.receiver.plist")
+        let plist=try PropertyListSerialization.propertyList(from:Data(contentsOf:url),format:nil) as? [String:Any]
+        guard let values=plist?["ProgramArguments"] as? [String],let index=values.firstIndex(of:"menu") else {
+            throw CLIError.invalidValue("receiver launch configuration; reinstall the Mini helper")
+        }
+        return CLIArguments(values:[CommandLine.arguments[0]]+Array(values[index...]))
+    }
+
     private static func run(_ arguments: CLIArguments) async throws {
         guard let command = arguments.command else {
             throw CLIError.missingCommand
         }
         switch command {
+        #if DEBUG
+        case "arrange-check":try await ArrangeChecks.run()
+        case "arrange-native-check":try await ArrangeChecks.nativeWindows(screenName:arguments.option("--screen") ?? "LU28R55")
+        #endif
         case "help", "--help", "-h":
             print(help)
         #if DEBUG
@@ -205,6 +245,9 @@ struct BrightnessRelayCLI {
         case "show-menu":
             try await makeClient(arguments).sendControl(.showMenu)
             print("Opened the BRIGHTMESS controller.")
+        case "arrange-here":
+            try await makeClient(arguments).sendControl(.arrangeHere)
+            print("Requested Arrange here preview. Windows change only after Apply.")
         case "token":
             try token(arguments)
         case "send":
@@ -504,6 +547,7 @@ struct BrightnessRelayCLI {
       brightness-relay set-display <number-or-id> <0-100>
       brightness-relay wake-all
       brightness-relay show-menu
+      brightness-relay arrange-here
       brightness-relay token create [--token-file <path>]
       brightness-relay receive [--port 47777] [--min 15] [--max 100] [--gamma 1]
                                [--deadband 2] [--token-file <path>]

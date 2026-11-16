@@ -8,17 +8,30 @@ struct DeskWindowsView: View {
     var body: some View {
         VStack(alignment:.leading,spacing:5) {
             HStack {
-                Text("Bring a window here").font(.system(size:15,weight:.bold))
+                Text("Bring a window here").font(DeckPaint.title(16))
                 Spacer()
-                Text("To "+windows.destinationName).lineLimit(1).font(.caption)
+                Label(windows.destinationName, systemImage: "arrow.turn.down.left")
+                    .lineLimit(1).font(.caption.weight(.semibold))
+                    .padding(.horizontal,7).padding(.vertical,3)
+                    .background(DeckPaint.button,in:Capsule())
+                    .accessibilityLabel("To "+windows.destinationName)
             }
-            if !windows.sourceNames.isEmpty {
-                Text("From "+windows.sourceNames).font(.caption).foregroundStyle(DeckPaint.muted).lineLimit(1)
-            }
-            if let openPicker {
-                Button {openPicker()} label: {
-                    HStack(spacing:5){Text("Open window picker");if let key=shortcuts.activeBinding(.bringHere){Text(key.label)}}
-                }.controlSize(.small).help("Choose a window using visible letter keys")
+            if !windows.sourceNames.isEmpty || openPicker != nil {
+                HStack {
+                    if !windows.sourceNames.isEmpty {
+                        Text("From "+windows.sourceNames).font(.caption).foregroundStyle(DeckPaint.muted).lineLimit(1)
+                    }
+                    Spacer(minLength:4)
+                    if let openPicker {
+                        Button {openPicker()} label: {
+                            HStack(spacing:5){
+                                Label("Window picker",systemImage:"macwindow")
+                                if let key=shortcuts.activeBinding(.bringHere){Text(key.label)}
+                            }.fixedSize()
+                        }.buttonStyle(.borderless).controlSize(.small)
+                            .help("Choose a window using visible letter keys")
+                    }
+                }
             }
             if windows.choices.isEmpty {
                 HStack {
@@ -54,9 +67,11 @@ struct DeskWindowsView: View {
                 }
             }
             if !windows.notice.isEmpty {Text(windows.notice).font(.caption)}
-        }.padding(.horizontal,16).padding(.vertical,9)
-        .frame(maxWidth:.infinity,minHeight:137,alignment:.leading)
-        .foregroundStyle(DeckPaint.ink).background(DeckPaint.shelf)
+        }.padding(.horizontal,16).padding(.vertical,10)
+        .frame(maxWidth:.infinity,minHeight:117,alignment:.leading)
+        .foregroundStyle(DeckPaint.ink)
+        .overlay(alignment:.top) { Rectangle().fill(DeckPaint.rule).frame(height:0.5) }
+        .overlay(alignment:.bottom) { Rectangle().fill(DeckPaint.rule).frame(height:0.5) }
     }
 }
 
@@ -76,8 +91,8 @@ private struct DeskWindowTile: View {
             }.lineLimit(1)
             Spacer(minLength:0)
         }.padding(.horizontal,6).frame(width:135,height:37)
-        .background(DeckPaint.button,in:RoundedRectangle(cornerRadius:6))
-        .overlay(RoundedRectangle(cornerRadius:6).strokeBorder(DeckPaint.rule,lineWidth:1))
+        .background(DeckPaint.button,in:RoundedRectangle(cornerRadius:8))
+        .overlay(RoundedRectangle(cornerRadius:8).strokeBorder(DeckPaint.rule,lineWidth:1))
     }
     var body:some View {
         Button(action:bring){tile}.buttonStyle(.plain).accessibilityLabel(Text(actionName)).help(actionName)
@@ -89,11 +104,11 @@ struct DeskShortcutEditor: View {
     var body: some View {
         VStack(alignment:.leading,spacing:8) {
             HStack {
-                Text("Shortcuts & icons").font(.headline); Spacer()
+                Text("Shortcuts & icons").font(DeckPaint.title(16)); Spacer()
                 Button("Use suggested keys") { shortcuts.suggestions() }
-                    .help("Fill only unassigned actions, including ⌃⌥Space for the window picker. Smart TV stays click-only.")
+                    .help("Fill only unassigned actions, including ⌃⌥Space for the window picker and ⌃⌥Return for Arrange here. Smart TV stays click-only.")
             }
-            Text("Choose an icon or record a global shortcut. Esc cancels recording.").font(.caption).foregroundStyle(.secondary)
+            Text("Choose an icon or record a global shortcut. Esc cancels recording.").font(.caption).foregroundStyle(DeckPaint.muted)
             ForEach(DeskAction.allCases) { action in
                 HStack {
                     Menu {
@@ -108,7 +123,7 @@ struct DeskShortcutEditor: View {
                     Text(action.name)
                     Spacer()
                     if action == .home {
-                        Text("Button only").font(.caption).foregroundStyle(.secondary)
+                        Text("Button only").font(.caption).foregroundStyle(DeckPaint.muted)
                     } else {
                         if shortcuts.unavailable.contains(action) { Image(systemName:"exclamationmark.triangle").help("Shortcut unavailable") }
                         Button(shortcuts.recording == action ? "Press keys…" : shortcuts.binding(action)?.label ?? "Record…") { shortcuts.record(action) }
@@ -123,7 +138,7 @@ struct DeskShortcutEditor: View {
             }
             if !shortcuts.notice.isEmpty { Text(shortcuts.notice).font(.caption) }
         }.controlSize(.small).padding(12).frame(maxWidth:.infinity,alignment:.leading)
-        .background(.secondary.opacity(0.08),in:RoundedRectangle(cornerRadius:8))
+        .background(DeckPaint.shelf,in:RoundedRectangle(cornerRadius:10))
     }
 }
 
@@ -148,22 +163,32 @@ struct TVStrip: View {
     var previewMapping = false
     var previewPairing = false
     var body: some View {
-        VStack(alignment:.leading,spacing:8) {
-            HStack {
-                Text("TV source").font(.system(size:27,weight:.bold)).tracking(-0.9)
-                Spacer()
-                if remote.paired != nil || remote.fixture { Text(remote.ready ? "TV connected" : "Pairing saved").font(.caption) }
+        VStack(alignment:.leading,spacing:7) {
+            HStack(spacing:7) {
+                Text("TV source").font(DeckPaint.title(27)).tracking(-0.5).fixedSize()
+                Spacer(minLength:2)
+                if remote.paired != nil || remote.fixture {
+                    Text(remote.ready ? "TV connected" : "Pairing saved").font(.caption.weight(.semibold)).lineLimit(1)
+                }
                 if remote.paired != nil && !remote.ready {
                     Button("Reconnect") { remote.reconnect() }.disabled(remote.pairingInProgress)
                 }
-                    Button(form.setup ? "Close setup" : (remote.paired == nil && !remote.fixture ? "Pair TV" : "Set up")) {
-                        form.setup.toggle(); form.mapping = false; form.code = ""
-                    }.buttonStyle(.plain).padding(4).overlay(RoundedRectangle(cornerRadius:5).strokeBorder(DeckPaint.cream.opacity(0.55)))
+                Button(form.setup ? "Close setup" : (remote.paired == nil && !remote.fixture ? "Pair TV" : "Set up")) {
+                    form.setup.toggle(); form.mapping = false; form.code = ""
+                }
             }
-            HStack {
-                source(.ps5); source(.mac); source(.home)
+            SolarKeyGroup {
+                VStack(spacing:8) {
+                    HStack(spacing:8) {
+                        source(.ps5)
+                        source(.mac)
+                    }
+                    source(.home)
+                }
             }
-            Text(remote.notice).font(.caption).foregroundStyle(DeckPaint.cream)
+            Text(remote.notice).font(.caption).padding(.top,1)
+                .onChange(of:remote.requestedSetup){_,_ in applySetupRequests()}
+                .onChange(of:remote.requestedMapping){_,_ in applySetupRequests()}
             if form.setup {
                 if remote.wantsCode {
                     VStack(alignment:.leading,spacing:6) {
@@ -190,7 +215,7 @@ struct TVStrip: View {
                         TextField("For example, 192.168.1.20",text:$form.tvHost)
                             .foregroundStyle(Color(nsColor:.textColor)).accessibilityLabel("TV local IPv4 address")
                         Text("Then choose Show code on TV or Pair again above. The address alone never replaces pairing.").font(.caption)
-                    }.tint(DeckPaint.cream)
+                    }.tint(DeckPaint.ink)
                 }
                 if let p = remote.paired {
                     Button("Open TV inputs") { remote.inputMenu() }.disabled(!remote.ready)
@@ -219,11 +244,11 @@ struct TVStrip: View {
                     }
                 }
             }
-        }.controlSize(.small).buttonStyle(TVSetupButtonStyle())
-        .padding(.horizontal,16).padding(.vertical,9)
-        .frame(maxWidth:.infinity,alignment:.leading).foregroundStyle(DeckPaint.cream).background(DeckPaint.forest)
-        .environment(\.colorScheme,.dark)
+        }.controlSize(.small).buttonStyle(SolarUtilityButtonStyle())
+        .padding(.horizontal,16).padding(.vertical,11)
+        .frame(maxWidth:.infinity,alignment:.leading).foregroundStyle(DeckPaint.ink)
         .onAppear {
+            applySetupRequests()
             if previewPairing { form.setup = true }
             if previewMapping, let p = remote.paired {
                 form.setup = true; form.mapping = true; form.ps5HDMI = p.hdmi(.ps5); form.miniHDMI = p.hdmi(.mac)
@@ -232,25 +257,46 @@ struct TVStrip: View {
         }
     }
     private func submit() { remote.verify(form.code); form.code = "" }
+    private func applySetupRequests() {
+        if remote.requestedSetup != nil {form.setup=true;form.mapping=false;remote.requestedSetup=nil}
+        if remote.requestedMapping != nil {
+            form.setup=true;form.mapping=true;remote.requestedMapping=nil
+            if let p=remote.paired {form.ps5HDMI=p.hdmi(.ps5);form.miniHDMI=p.hdmi(.mac);form.ps5=p.ps5;form.mini=p.mini;form.picker1=p.ps5Picker;form.picker3=p.miniPicker}
+        }
+    }
     private func source(_ a: DeskAction) -> some View {
         let picker = remote.usesPicker(a)
         let route = remote.routeLabel(a)
+        let name = a.name+(picker ? "…" : "")
+        let icon = shortcuts.symbol(a)
         return Button { remote.activate(a) } label: {
-            VStack(alignment:.leading,spacing:2) {
-                HStack(alignment:.top) {
-                    Text(shortcuts.activeBinding(a)?.label ?? "").font(.system(size:10,weight:.semibold))
-                    Spacer(minLength:0)
-                }
-                Spacer(minLength:0)
-                Text(a.name+(picker ? "…" : "")).font(.system(size:19,weight:.bold)).tracking(-0.4)
-                Text(route).font(.system(size:11,weight:.medium))
-            }.padding(9).frame(maxWidth:.infinity,alignment:.leading).frame(height:99)
-            .background(alignment:.topTrailing){
-                Image(systemName:shortcuts.symbol(a)).resizable().scaledToFit().frame(width:61,height:43)
-                    .rotationEffect(.degrees(-9)).offset(x:5,y:-3).opacity(0.64).accessibilityHidden(true)
-            }.foregroundStyle(DeckPaint.forest).background(DeckPaint.pear,in:RoundedRectangle(cornerRadius:8))
-            .clipShape(RoundedRectangle(cornerRadius:8))
-        }.buttonStyle(.plain).disabled(!remote.ready)
+            if a == .home {
+                HStack(spacing:8) {
+                    Image(systemName:icon).font(.system(size:13,weight:.semibold)).accessibilityHidden(true)
+                    Text(name).font(.system(size:13,weight:.semibold))
+                    Spacer()
+                    Text(route).font(.caption)
+                    Image(systemName:"arrow.up.right").font(.system(size:9,weight:.semibold)).accessibilityHidden(true)
+                }.padding(.horizontal,10).frame(height:29)
+            } else {
+                VStack(alignment:.leading,spacing:5) {
+                    HStack {
+                        Image(systemName:icon).font(.system(size:17,weight:.semibold)).accessibilityHidden(true)
+                        Spacer(minLength:0)
+                        if let key = shortcuts.activeBinding(a) {
+                            Text(key.label).font(.system(size:10,weight:.semibold))
+                                .padding(.horizontal,5).padding(.vertical,2)
+                                .background(DeckPaint.button,in:RoundedRectangle(cornerRadius:4))
+                        }
+                    }
+                    HStack(alignment:.firstTextBaseline,spacing:4) {
+                        Text(name).font(DeckPaint.title(18)).lineLimit(1)
+                        Spacer(minLength:0)
+                        Text(route).font(.caption.weight(.medium)).lineLimit(1)
+                    }
+                }.padding(.horizontal,11).frame(height:62)
+            }
+        }.buttonStyle(SolarSourceKeyStyle(primary:a != .home)).disabled(!remote.ready)
         .accessibilityLabel("Send "+a.name+" · "+route)
         .help([picker ? "Open TV input chooser" : a.name,shortcuts.activeBinding(a)?.label].compactMap{$0}.joined(separator:" · "))
     }
